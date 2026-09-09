@@ -1,10 +1,16 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to SimpleMovieFeed are documented here.
 
 The project uses Semantic Versioning.
 
 ## [Unreleased]
+
+## [1.2.2] - 2026-09-09
+
+### Fixed
+- Load configuration values from the plugin-owned authenticated status endpoint so settings populate correctly in Jellyfin Web.
+- Save configuration without depending on Jellyfin Web's generic plugin-configuration API.
 
 ## [1.2.1] - 2026-09-09
 
@@ -61,6 +67,7 @@ The project uses Semantic Versioning.
 - Startup cleanup of disposable SimpleMovieFeed data.
 - Consistent Jellyfin Web card and section presentation.
 
+[1.2.2]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.2
 [1.2.1]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.1
 [1.2.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.0
 [1.1.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.1.0
