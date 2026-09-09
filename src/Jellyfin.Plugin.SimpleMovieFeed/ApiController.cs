@@ -976,6 +976,97 @@ public sealed class ApiController : ControllerBase
         }
     }
 
+    [HttpGet("configuration/status")]
+    [Authorize(Policy = "RequiresElevation")]
+    public ActionResult<object> GetConfigurationStatus()
+    {
+        var configuration = RuntimeSettings.Current;
+
+        return Ok(
+            new
+            {
+                credentialConfigured =
+                    QBitTorrentService.IsCredentialConfigured,
+                credentialStorageSupported =
+                    OperatingSystem.IsWindows(),
+                cacheDirectory =
+                    RuntimeSettings.CacheDirectory,
+                libraryDirectory =
+                    RuntimeSettings.LibraryDirectory,
+                qBitTorrentApiUrl =
+                    RuntimeSettings.QBitTorrentApiUri.ToString(),
+                startupBufferMiB =
+                    RuntimeSettings.StartupBufferMiB,
+                cleanupGraceSeconds =
+                    (int)RuntimeSettings.CleanupGrace.TotalSeconds,
+                qBitTorrentTimeoutSeconds =
+                    (int)RuntimeSettings.QBitTorrentTimeout.TotalSeconds,
+                rssFeedUrl =
+                    RuntimeSettings.RssFeedUrl,
+                movieSearchApiUrl =
+                    RuntimeSettings.MovieSearchApiUrl,
+                restartRequiredSettings = new[]
+                {
+                    nameof(configuration.CacheDirectory),
+                    nameof(configuration.LibraryDirectory),
+                    nameof(configuration.QBitTorrentApiUrl),
+                    nameof(configuration.QBitTorrentTimeoutSeconds)
+                }
+            });
+    }
+
+    [HttpPost("configuration/credential")]
+    [Authorize(Policy = "RequiresElevation")]
+    public IActionResult UpdateQBitTorrentCredential(
+        [FromBody] QBitTorrentCredentialRequest request)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return BadRequest(
+                new
+                {
+                    error =
+                        "Protected credential storage is currently supported only on Windows."
+                });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ApiKey))
+        {
+            return BadRequest(
+                new
+                {
+                    error =
+                        "qBittorrent API key must not be empty."
+                });
+        }
+
+        try
+        {
+            _aria2Service.UpdateApiKey(request.ApiKey);
+
+            return Ok(
+                new
+                {
+                    credentialConfigured = true
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(
+                new
+                {
+                    error = ex.Message
+                });
+        }
+        catch (PlatformNotSupportedException ex)
+        {
+            return BadRequest(
+                new
+                {
+                    error = ex.Message
+                });
+        }
+    }
     [HttpPost("stop/{movieId}")]
     [Authorize]
     public IActionResult StopStream(
@@ -1030,6 +1121,11 @@ public sealed class ApiController : ControllerBase
 
         return Ok(history);
     }
+}
+
+public sealed class QBitTorrentCredentialRequest
+{
+    public string ApiKey { get; set; } = string.Empty;
 }
 
 public class StreamRequest

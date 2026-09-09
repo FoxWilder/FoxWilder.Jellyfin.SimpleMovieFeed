@@ -114,6 +114,12 @@ public sealed class QBitTorrentService
             }
         }
     }
+    public void UpdateApiKey(string apiKey)
+    {
+        SaveApiKey(apiKey);
+
+        _http.DefaultRequestHeaders.Authorization = null;
+    }
     private static string ReadApiKey()
     {
         if (!OperatingSystem.IsWindows())
