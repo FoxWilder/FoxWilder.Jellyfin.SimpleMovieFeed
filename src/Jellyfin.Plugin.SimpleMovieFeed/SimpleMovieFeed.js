@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
     "use strict";
     /*
      * Global authentication helper.
@@ -1988,8 +1988,42 @@ function getApiClient() {
         let firstTorrentStatusSeen = false;
         let resumeCacheAlreadyReady = false;
 
+        let startupBufferMiB = 256;
+
+        try {
+            const runtimeResponse =
+                await fetchWithAuth(
+                    "/SimpleMovieFeed/runtime",
+                    { method: "GET" }
+                );
+
+            if (runtimeResponse.ok) {
+                const runtimeSettings =
+                    await runtimeResponse.json();
+
+                const configuredBuffer =
+                    Number(
+                        runtimeSettings.startupBufferMiB
+                    );
+
+                if (
+                    Number.isFinite(configuredBuffer) &&
+                    configuredBuffer >= 1
+                ) {
+                    startupBufferMiB =
+                        configuredBuffer;
+                }
+            }
+        }
+        catch (error) {
+            console.warn(
+                "SimpleMovieFeed: unable to read runtime buffer setting.",
+                error
+            );
+        }
+
         const minimumStartupBytes =
-            256 * 1024 * 1024;
+            startupBufferMiB * 1024 * 1024;
 
         let startInFlight = false;
         let startError = null;
@@ -2308,7 +2342,9 @@ function getApiClient() {
                                                 1024 /
                                                 1024
                                             ).toFixed(1) +
-                                            " / 256 MB cached";
+                                            " / " +
+                                            startupBufferMiB +
+                                            " MiB cached";
                                     }
 
                                     continue;

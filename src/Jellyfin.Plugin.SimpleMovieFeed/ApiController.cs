@@ -976,6 +976,17 @@ public sealed class ApiController : ControllerBase
         }
     }
 
+    [HttpGet("runtime")]
+    [Authorize]
+    public ActionResult<object> GetRuntimeSettings()
+    {
+        return Ok(
+            new
+            {
+                startupBufferMiB =
+                    RuntimeSettings.StartupBufferMiB
+            });
+    }
     [HttpGet("configuration/status")]
     [Authorize(Policy = "RequiresElevation")]
     public ActionResult<object> GetConfigurationStatus()
