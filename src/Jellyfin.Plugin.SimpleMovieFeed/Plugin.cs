@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
@@ -23,7 +23,14 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         Instance = this;
         _applicationPaths = applicationPaths;
 
-        Directory.CreateDirectory(Configuration.CacheDirectory);
+        Directory.CreateDirectory(
+            RuntimeSettings.CacheDirectory);
+
+        Directory.CreateDirectory(
+            RuntimeSettings.LibraryDirectory);
+
+        PlaybackStateStore.Initialize(
+            RuntimeSettings.CacheDirectory);
 
         InjectWebScript();
     }
