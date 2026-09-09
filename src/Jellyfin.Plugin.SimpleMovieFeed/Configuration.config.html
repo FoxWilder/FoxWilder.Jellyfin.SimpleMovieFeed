@@ -53,7 +53,7 @@
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="QBitTorrentApiKey">qBittorrent API key / password</label>
                         <input id="QBitTorrentApiKey" type="password" is="emby-input" autocomplete="new-password" />
-                        <div id="QBitTorrentCredentialStatus" class="fieldDescription">Checking protected credential status…</div>
+                        <div id="QBitTorrentCredentialStatus" class="fieldDescription">Checking protected credential statusâ€¦</div>
                         <div class="fieldDescription">Leave blank to keep the currently protected credential. The secret is not stored in the normal Jellyfin plugin configuration.</div>
                     </div>
 
@@ -238,10 +238,36 @@
                 config.CleanupGraceSeconds = integerValue("CleanupGraceSeconds");
                 config.QBitTorrentTimeoutSeconds = integerValue("QBitTorrentTimeoutSeconds");
 
-                await ApiClient.updatePluginConfiguration(
-                    pluginId,
-                    config
+                const saveResponse = await authenticatedFetch(
+                    "/SimpleMovieFeed/configuration",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(config)
+                    }
                 );
+
+                if (!saveResponse.ok) {
+                    let message =
+                        "Unable to save SimpleMovieFeed configuration.";
+
+                    try {
+                        const failure = await saveResponse.json();
+
+                        if (failure && failure.error) {
+                            message = failure.error;
+                        }
+                    } catch (error) {
+                        console.warn(
+                            "SimpleMovieFeed: unable to read configuration error response.",
+                            error
+                        );
+                    }
+
+                    throw new Error(message);
+                }
 
                 await saveCredentialIfProvided();
                 await loadCredentialStatus();

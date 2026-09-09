@@ -1026,6 +1026,162 @@ public sealed class ApiController : ControllerBase
             });
     }
 
+    [HttpPost("configuration")]
+    [Authorize(Policy = "RequiresElevation")]
+    public IActionResult UpdateConfiguration(
+        [FromBody] PluginConfiguration request)
+    {
+        if (request is null)
+        {
+            return BadRequest(
+                new { error = "Configuration is required." });
+        }
+
+        if (!TryValidateHttpUrl(
+                request.RssFeedUrl,
+                out var rssFeedUrl))
+        {
+            return BadRequest(
+                new { error = "RSS feed URL must be a valid HTTP or HTTPS URL." });
+        }
+
+        if (!TryValidateHttpUrl(
+                request.MovieSearchApiUrl,
+                out var movieSearchApiUrl))
+        {
+            return BadRequest(
+                new { error = "Movie API URL must be a valid HTTP or HTTPS URL." });
+        }
+
+        if (!TryValidateHttpUrl(
+                request.QBitTorrentApiUrl,
+                out var qBitTorrentApiUrl))
+        {
+            return BadRequest(
+                new { error = "qBittorrent API URL must be a valid HTTP or HTTPS URL." });
+        }
+
+        if (!TryValidateDirectory(
+                request.CacheDirectory,
+                out var cacheDirectory))
+        {
+            return BadRequest(
+                new { error = "Cache directory must be a valid absolute path." });
+        }
+
+        if (!TryValidateDirectory(
+                request.LibraryDirectory,
+                out var libraryDirectory))
+        {
+            return BadRequest(
+                new { error = "Movie library directory must be a valid absolute path." });
+        }
+
+        if (request.StartupBufferMiB < 1 ||
+            request.StartupBufferMiB > 4096)
+        {
+            return BadRequest(
+                new { error = "Startup buffer must be between 1 and 4096 MiB." });
+        }
+
+        if (request.CleanupGraceSeconds < 0 ||
+            request.CleanupGraceSeconds > 3600)
+        {
+            return BadRequest(
+                new { error = "Cleanup grace period must be between 0 and 3600 seconds." });
+        }
+
+        if (request.QBitTorrentTimeoutSeconds < 5 ||
+            request.QBitTorrentTimeoutSeconds > 300)
+        {
+            return BadRequest(
+                new { error = "qBittorrent timeout must be between 5 and 300 seconds." });
+        }
+
+        request.RssFeedUrl = rssFeedUrl;
+        request.MovieSearchApiUrl =
+            movieSearchApiUrl.TrimEnd('/');
+        request.CacheDirectory = cacheDirectory;
+        request.LibraryDirectory = libraryDirectory;
+        request.QBitTorrentApiUrl =
+            qBitTorrentApiUrl.EndsWith("/", StringComparison.Ordinal)
+                ? qBitTorrentApiUrl
+                : qBitTorrentApiUrl + "/";
+
+        Plugin.Instance.UpdateConfiguration(request);
+
+        return Ok(
+            new
+            {
+                saved = true,
+                restartRequiredSettings = new[]
+                {
+                    nameof(request.CacheDirectory),
+                    nameof(request.LibraryDirectory),
+                    nameof(request.QBitTorrentApiUrl),
+                    nameof(request.QBitTorrentTimeoutSeconds)
+                }
+            });
+    }
+
+    private static bool TryValidateHttpUrl(
+        string? value,
+        out string normalized)
+    {
+        normalized = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var selected = value.Trim();
+
+        if (!Uri.TryCreate(
+                selected,
+                UriKind.Absolute,
+                out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp &&
+             uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return false;
+        }
+
+        normalized = selected;
+        return true;
+    }
+
+    private static bool TryValidateDirectory(
+        string? value,
+        out string normalized)
+    {
+        normalized = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            var selected = value.Trim();
+
+            if (!Path.IsPathFullyQualified(selected))
+            {
+                return false;
+            }
+
+            normalized = Path.GetFullPath(selected);
+            return true;
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException ||
+                  ex is NotSupportedException ||
+                  ex is PathTooLongException)
+        {
+            return false;
+        }
+    }
     [HttpPost("configuration/credential")]
     [Authorize(Policy = "RequiresElevation")]
     public IActionResult UpdateQBitTorrentCredential(
