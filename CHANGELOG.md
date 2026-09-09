@@ -1,10 +1,12 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to SimpleMovieFeed are documented here.
 
 The project uses Semantic Versioning.
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-09-09
 
 ### Added
 
@@ -44,4 +46,5 @@ The project uses Semantic Versioning.
 - Startup cleanup of disposable SimpleMovieFeed data.
 - Consistent Jellyfin Web card and section presentation.
 
+[1.1.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.1.0
 [1.0.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.0.0
