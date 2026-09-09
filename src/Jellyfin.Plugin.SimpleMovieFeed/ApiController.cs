@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Controller.Net;
+using MediaBrowser.Controller.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -288,7 +288,7 @@ public sealed class ApiController : ControllerBase
 
                     var path =
                         Path.Combine(
-                            @"C:\JellyfinMovieCache",
+                            RuntimeSettings.CacheDirectory,
                             relativePath);
 
                     Console.WriteLine(
@@ -343,7 +343,7 @@ public sealed class ApiController : ControllerBase
             var actualPath =
                 Directory
                     .EnumerateFiles(
-                        @"C:\JellyfinMovieCache",
+                        RuntimeSettings.CacheDirectory,
                         fileName,
                         SearchOption.AllDirectories)
                     .OrderByDescending(
@@ -669,8 +669,8 @@ public sealed class ApiController : ControllerBase
 
             string? videoPath = null;
 
-            const long minimumStartupBytes =
-                256L * 1024L * 1024L;
+            var minimumStartupBytes =
+                RuntimeSettings.StartupBufferBytes;
 
             for (
                 var attempt = 0;
@@ -753,7 +753,7 @@ public sealed class ApiController : ControllerBase
                 {
                     var candidate =
                         Path.Combine(
-                            @"C:\JellyfinMovieCache",
+                            RuntimeSettings.CacheDirectory,
                             bestRelativePath);
 
                     if (System.IO.File.Exists(
@@ -772,7 +772,7 @@ public sealed class ApiController : ControllerBase
                         videoPath =
                             Directory
                                 .EnumerateFiles(
-                                    @"C:\JellyfinMovieCache",
+                                    RuntimeSettings.CacheDirectory,
                                     fileName,
                                     SearchOption.AllDirectories)
                                 .OrderByDescending(

@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Controller;
+using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,8 +10,8 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         IServiceCollection serviceCollection,
         IServerApplicationHost applicationHost)
     {
-        var cacheDir = @"C:\JellyfinMovieCache";
-        var libraryDir = @"C:\JellyfinMovieFeedLibrary";
+        var cacheDir = PluginConfiguration.CacheDirectoryDefault;
+        var libraryDir = PluginConfiguration.LibraryDirectoryDefault;
 
         Directory.CreateDirectory(cacheDir);
         Directory.CreateDirectory(libraryDir);

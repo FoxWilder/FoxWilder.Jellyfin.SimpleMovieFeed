@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 
 namespace Jellyfin.Plugin.SimpleMovieFeed;
 
@@ -6,7 +6,7 @@ public class YtsApiService
 {
     private readonly HttpClient _httpClient;
 
-    private const string BaseUrl = "https://movies-api.accel.li/api/v2";
+    private static string BaseUrl => RuntimeSettings.MovieSearchApiUrl;
 
     public YtsApiService(HttpClient httpClient)
     {

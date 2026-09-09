@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Dto;
 using System.Collections.Concurrent;
 using MediaBrowser.Controller.Library;
@@ -11,12 +11,6 @@ public sealed class PlaybackCleanupEntryPoint :
     IHostedService,
     IDisposable
 {
-    private const string CacheDirectory =
-        @"C:\JellyfinMovieCache";
-
-    private const string LibraryDirectory =
-        @"C:\JellyfinMovieFeedLibrary";
-
     private sealed record PendingCleanup(
         ActiveMoviePlayback Record,
         CancellationTokenSource Cancellation);
@@ -326,7 +320,7 @@ public sealed class PlaybackCleanupEntryPoint :
             try
             {
                 await Task.Delay(
-                    TimeSpan.FromSeconds(30),
+                    RuntimeSettings.CleanupGrace,
                     cancellation.Token);
             }
             catch (OperationCanceledException)
@@ -386,11 +380,11 @@ public sealed class PlaybackCleanupEntryPoint :
         try
         {
             Directory.CreateDirectory(
-                CacheDirectory);
+                RuntimeSettings.CacheDirectory);
 
             foreach (var file in
                 Directory.EnumerateFiles(
-                    CacheDirectory,
+                    RuntimeSettings.CacheDirectory,
                     "*",
                     SearchOption.AllDirectories))
             {
@@ -424,7 +418,7 @@ public sealed class PlaybackCleanupEntryPoint :
             foreach (var directory in
                 Directory
                     .EnumerateDirectories(
-                        CacheDirectory,
+                        RuntimeSettings.CacheDirectory,
                         "*",
                         SearchOption.AllDirectories)
                     .OrderByDescending(
@@ -461,11 +455,11 @@ public sealed class PlaybackCleanupEntryPoint :
         try
         {
             Directory.CreateDirectory(
-                LibraryDirectory);
+                RuntimeSettings.LibraryDirectory);
 
             foreach (var file in
                 Directory.EnumerateFiles(
-                    LibraryDirectory,
+                    RuntimeSettings.LibraryDirectory,
                     "*",
                     SearchOption.AllDirectories))
             {

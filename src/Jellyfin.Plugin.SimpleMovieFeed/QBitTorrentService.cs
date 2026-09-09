@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -8,7 +8,7 @@ namespace Jellyfin.Plugin.SimpleMovieFeed;
 
 public sealed class QBitTorrentService
 {
-    private const string BaseUrl = "http://127.0.0.1:8080/api/v2/";
+
 
     private const string PluginTag = "simplemoviefeed";
 
@@ -30,8 +30,8 @@ public sealed class QBitTorrentService
 
         _http = new HttpClient
         {
-            BaseAddress = new Uri(BaseUrl),
-            Timeout = TimeSpan.FromSeconds(30)
+            BaseAddress = RuntimeSettings.QBitTorrentApiUri,
+            Timeout = RuntimeSettings.QBitTorrentTimeout
         };
 
         // Authentication is initialized lazily on the first qBittorrent request.
