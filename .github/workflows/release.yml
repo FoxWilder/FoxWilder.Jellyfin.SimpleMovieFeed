@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
 
@@ -38,7 +38,10 @@ jobs:
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
           $required = @(
-              'Jellyfin.Plugin.SimpleMovieFeed.dll',
+              'Jellyfin.Plugin.SimpleMovieFeed.dll'
+          )
+
+          $optional = @(
               'System.Security.Cryptography.ProtectedData.dll'
           )
 
@@ -48,6 +51,14 @@ jobs:
                   throw "Required release file missing: $file"
               }
               Copy-Item $path $stage
+          }
+
+          foreach ($file in $optional) {
+              $path = Join-Path $source $file
+              if (Test-Path $path -PathType Leaf) {
+                  Copy-Item $path $stage
+                  Write-Host "Including optional runtime dependency: $file"
+              }
           }
 
           Copy-Item 'LICENSE' $stage
