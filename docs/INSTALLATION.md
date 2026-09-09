@@ -30,11 +30,25 @@ C:\ProgramData\Jellyfin\Server\plugins\SimpleMovieFeed_<version>\
 
 Do not treat a DLL from a local source-tree build as an official release artifact. Official artifacts are built and published through the repository's GitHub workflows.
 
+## Validate the Windows service after installation
+
+After starting Jellyfin, verify both the Windows service and the actual Jellyfin server process before treating the deployment as healthy.
+
+On installations where JellyfinServer is managed by NSSM, the Windows service PID can belong to the NSSM wrapper rather than jellyfin.exe. Do not use the service PID alone to decide whether Jellyfin owns a listening HTTP endpoint.
+
+1. Confirm the JellyfinServer Windows service is running.
+2. Locate the actual jellyfin.exe server process.
+3. Inspect listening TCP endpoints owned by that jellyfin.exe process.
+4. Use the discovered Jellyfin HTTP endpoint for the server health/info request instead of assuming a fixed port solely from the service wrapper.
+5. Confirm the Jellyfin log reports SimpleMovieFeed loading without new plugin errors.
+
+A deployment should not be considered failed merely because the NSSM wrapper PID has no listening TCP endpoint. Listener validation must be performed against the real Jellyfin process.
+
 ## Configure
 
 After installation, open the SimpleMovieFeed plugin settings page in the Jellyfin dashboard.
 
-Configure the movie feed/API endpoints, cache and library directories, qBittorrent API endpoint, startup buffer, cleanup grace period and qBittorrent timeout as required.
+The RSS feed, movie API and qBittorrent API endpoints use supported fixed defaults and are read-only. Configure the cache and library directories, startup buffer, cleanup grace period and qBittorrent timeout as required.
 
 Enter the qBittorrent API key/password in its protected write-only field. Leaving the field blank preserves an existing credential.
 
