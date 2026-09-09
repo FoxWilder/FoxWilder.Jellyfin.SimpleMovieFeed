@@ -1,12 +1,13 @@
-﻿namespace Jellyfin.Plugin.SimpleMovieFeed;
+namespace Jellyfin.Plugin.SimpleMovieFeed;
 
 public class TorrentStreamService
 {
     private readonly string _cacheDir;
 
-    public TorrentStreamService(string cacheDir)
+    public TorrentStreamService()
     {
-        _cacheDir = cacheDir;
+        _cacheDir = RuntimeSettings.CacheDirectory;
+        Directory.CreateDirectory(_cacheDir);
     }
 
     public async Task<string> StartStreamAsync(

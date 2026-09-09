@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using MediaBrowser.Controller.Library;
 
 namespace Jellyfin.Plugin.SimpleMovieFeed;
@@ -15,12 +15,11 @@ public sealed class JellyfinMovieLibraryService
         };
 
     public JellyfinMovieLibraryService(
-        string libraryDirectory,
         ILibraryManager libraryManager)
     {
         _libraryDirectory =
             Path.GetFullPath(
-                libraryDirectory);
+                RuntimeSettings.LibraryDirectory);
 
         _libraryManager =
             libraryManager;

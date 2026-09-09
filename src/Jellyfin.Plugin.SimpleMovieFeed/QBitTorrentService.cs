@@ -22,9 +22,9 @@ public sealed class QBitTorrentService
     private readonly HttpClient _http;
     private readonly string _downloadDirectory;
 
-    public QBitTorrentService(string downloadDirectory)
+    public QBitTorrentService()
     {
-        _downloadDirectory = downloadDirectory;
+        _downloadDirectory = RuntimeSettings.CacheDirectory;
 
         Directory.CreateDirectory(_downloadDirectory);
 
