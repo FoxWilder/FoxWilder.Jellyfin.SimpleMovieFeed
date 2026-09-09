@@ -111,23 +111,34 @@
                     : newValue;
         }
 
-        function requestUrl(path) {
-            if (ApiClient.getUrl) {
-                return ApiClient.getUrl(path);
+        function getServerUrl() {
+            if (
+                window.ApiClient &&
+                typeof window.ApiClient.serverAddress === "function"
+            ) {
+                return window.ApiClient.serverAddress();
             }
 
-            return path;
+            return window.location.origin;
         }
 
         function authenticatedFetch(path, options) {
-            const request = Object.assign({}, options || {});
-            request.headers = Object.assign({}, request.headers || {});
-
-            if (ApiClient.accessToken) {
-                request.headers["X-Emby-Token"] = ApiClient.accessToken();
+            if (
+                !window.ApiClient ||
+                typeof window.ApiClient.accessToken !== "function"
+            ) {
+                throw new Error(
+                    "Jellyfin ApiClient/access token is unavailable."
+                );
             }
 
-            return fetch(requestUrl(path), request);
+            const request = Object.assign({}, options || {});
+            request.headers = Object.assign({}, request.headers || {});
+            request.headers["Authorization"] =
+                "MediaBrowser Token=" +
+                window.ApiClient.accessToken();
+
+            return fetch(getServerUrl() + path, request);
         }
 
         async function loadCredentialStatus() {
