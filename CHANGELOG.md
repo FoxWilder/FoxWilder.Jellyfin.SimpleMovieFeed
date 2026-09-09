@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3] - 2026-09-09
+
+### Fixed
+
+- Use Jellyfin's established server address and MediaBrowser token authentication pattern for plugin configuration requests.
+- Restore configuration-page loading and protected qBittorrent credential status requests in Jellyfin Web.
+
 All notable changes to SimpleMovieFeed are documented here.
 
 The project uses Semantic Versioning.
