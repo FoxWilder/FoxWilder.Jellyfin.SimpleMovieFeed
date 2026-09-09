@@ -24,6 +24,9 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
+      - name: Validate JavaScript
+        run: node --check src/Jellyfin.Plugin.SimpleMovieFeed/SimpleMovieFeed.js
+
       - name: Restore
         run: dotnet restore src/Jellyfin.Plugin.SimpleMovieFeed/Jellyfin.Plugin.SimpleMovieFeed.csproj
 
