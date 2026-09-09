@@ -1,4 +1,4 @@
-﻿name: Release
+name: Release
 
 on:
   push:
@@ -24,22 +24,78 @@ jobs:
       - name: Build
         run: dotnet build src/Jellyfin.Plugin.SimpleMovieFeed/Jellyfin.Plugin.SimpleMovieFeed.csproj --configuration Release
 
-      - name: Stage release
+      - name: Package and validate release
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $source = 'src/Jellyfin.Plugin.SimpleMovieFeed/bin/Release/net9.0'
-          $stage = 'artifacts/SimpleMovieFeed'
+          $artifacts = 'artifacts'
+          $stage = Join-Path $artifacts 'SimpleMovieFeed'
+          $zip = Join-Path $artifacts "SimpleMovieFeed-$env:GITHUB_REF_NAME.zip"
+          $checksum = "$zip.sha256"
+
+          Remove-Item $artifacts -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
-          Copy-Item "$source/Jellyfin.Plugin.SimpleMovieFeed.dll" $stage
-          if (Test-Path "$source/System.Security.Cryptography.ProtectedData.dll") {
-              Copy-Item "$source/System.Security.Cryptography.ProtectedData.dll" $stage
+
+          $required = @(
+              'Jellyfin.Plugin.SimpleMovieFeed.dll',
+              'System.Security.Cryptography.ProtectedData.dll'
+          )
+
+          foreach ($file in $required) {
+              $path = Join-Path $source $file
+              if (-not (Test-Path $path -PathType Leaf)) {
+                  throw "Required release file missing: $file"
+              }
+              Copy-Item $path $stage
           }
-          Copy-Item LICENSE $stage
-          Copy-Item README.md $stage
-          Compress-Archive -Path "$stage/*" -DestinationPath "artifacts/SimpleMovieFeed-$env:GITHUB_REF_NAME.zip" -Force
+
+          Copy-Item 'LICENSE' $stage
+          Copy-Item 'README.md' $stage
+
+          Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
+
+          if (-not (Test-Path $zip -PathType Leaf)) {
+              throw 'Release ZIP was not created.'
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+          try {
+              $entries = @($archive.Entries | ForEach-Object { $_.FullName })
+          }
+          finally {
+              $archive.Dispose()
+          }
+
+          foreach ($file in $required) {
+              if ($entries -notcontains $file) {
+                  throw "Release ZIP validation failed: $file is missing."
+              }
+          }
+
+          if ($entries -match '\.(pdb|deps\.json)$') {
+              throw 'Release ZIP contains unwanted development/runtime metadata.'
+          }
+
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $zipName = Split-Path $zip -Leaf
+          Set-Content -Path $checksum -Value "$hash  $zipName" -Encoding ASCII
+
+          Write-Host 'Release package contents:'
+          $entries | Sort-Object | ForEach-Object { Write-Host "  $_" }
+          Write-Host "SHA256: $hash"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: artifacts/SimpleMovieFeed-*.zip
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:GITHUB_REF_NAME" `
+            "artifacts/SimpleMovieFeed-$env:GITHUB_REF_NAME.zip" `
+            "artifacts/SimpleMovieFeed-$env:GITHUB_REF_NAME.zip.sha256" `
+            --repo "${{ github.repository }}" `
+            --title "SimpleMovieFeed $env:GITHUB_REF_NAME" `
+            --generate-notes `
+            --verify-tag `
+            --latest
