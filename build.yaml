@@ -1,0 +1,11 @@
+name: "Simple Movie Feed"
+guid: "d3d9d8e8-4a53-4a0d-9a5b-8a1b5c3b0d21"
+version: 1
+targetAbi: "10.11.0.0"
+framework: "net9.0"
+overview: "Simple RSS movie catalog with direct HTTP caching and deletion."
+description: "Reads a direct HTTP media RSS feed and downloads selected media into a local cache."
+category: "General"
+owner: "Local"
+artifacts:
+  - "Jellyfin.Plugin.SimpleMovieFeed.dll"

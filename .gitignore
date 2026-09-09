@@ -1,0 +1,60 @@
+﻿# ============================================================
+# SimpleMovieFeed - Git exclusions
+# ============================================================
+
+# .NET build output
+**/bin/
+**/obj/
+
+# Development / inspection directories
+/tmp-inspect/
+/artifacts/
+/release/
+
+# Development backups and temporary files
+*.bak
+*.bak.*
+*.bak-*
+*.broken
+*.broken-*
+*.tmp
+*.log
+*~
+
+# Local duplicate working copies
+/ApiController.cs
+/QBitTorrentService.cs
+
+# Visual Studio / IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Operating system
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Secrets and credentials
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key
+secrets/
+**/secrets/
+
+# Local Jellyfin / qBittorrent runtime data
+*.torrent
+*.part
+*.fastresume
+simplemoviefeed-resume.json
+simplemoviefeed-catalog.json
+
+# GitHub preparation backups
+/.github-prep-backup-*/

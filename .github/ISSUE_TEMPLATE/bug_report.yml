@@ -1,0 +1,62 @@
+﻿name: Bug report
+description: Report a reproducible problem with SimpleMovieFeed
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Remove all tokens, API keys and private information from logs.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: SimpleMovieFeed version
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: jellyfin-version
+    attributes:
+      label: Jellyfin version
+      placeholder: 10.11.11
+    validations:
+      required: true
+  - type: input
+    id: qbittorrent-version
+    attributes:
+      label: qBittorrent version
+      placeholder: 5.2.3
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reproducible sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact all credentials, tokens, API keys and private information.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety check
+      options:
+        - label: I have removed credentials and private information from this report.
+          required: true
