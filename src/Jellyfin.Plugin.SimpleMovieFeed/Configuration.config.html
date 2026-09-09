@@ -166,17 +166,29 @@
             Dashboard.showLoadingMsg();
 
             try {
-                const config =
-                    await ApiClient.getPluginConfiguration(pluginId);
+                const response = await authenticatedFetch(
+                    "/SimpleMovieFeed/configuration/status",
+                    { method: "GET" }
+                );
 
-                setValue("RssFeedUrl", config.RssFeedUrl);
-                setValue("MovieSearchApiUrl", config.MovieSearchApiUrl);
-                setValue("CacheDirectory", config.CacheDirectory);
-                setValue("LibraryDirectory", config.LibraryDirectory);
-                setValue("QBitTorrentApiUrl", config.QBitTorrentApiUrl);
-                setValue("StartupBufferMiB", config.StartupBufferMiB);
-                setValue("CleanupGraceSeconds", config.CleanupGraceSeconds);
-                setValue("QBitTorrentTimeoutSeconds", config.QBitTorrentTimeoutSeconds);
+                if (!response.ok) {
+                    throw new Error(
+                        "Unable to load SimpleMovieFeed configuration (HTTP " +
+                        response.status +
+                        ")."
+                    );
+                }
+
+                const config = await response.json();
+
+                setValue("RssFeedUrl", config.rssFeedUrl);
+                setValue("MovieSearchApiUrl", config.movieSearchApiUrl);
+                setValue("CacheDirectory", config.cacheDirectory);
+                setValue("LibraryDirectory", config.libraryDirectory);
+                setValue("QBitTorrentApiUrl", config.qBitTorrentApiUrl);
+                setValue("StartupBufferMiB", config.startupBufferMiB);
+                setValue("CleanupGraceSeconds", config.cleanupGraceSeconds);
+                setValue("QBitTorrentTimeoutSeconds", config.qBitTorrentTimeoutSeconds);
                 setValue("QBitTorrentApiKey", "");
 
                 await loadCredentialStatus();
@@ -226,17 +238,16 @@
             Dashboard.showLoadingMsg();
 
             try {
-                const config =
-                    await ApiClient.getPluginConfiguration(pluginId);
-
-                config.RssFeedUrl = "https://atlas.rssly.org/feed/0/all/all/0/en";
-                config.MovieSearchApiUrl = "https://movies-api.accel.li/api/v2";
-                config.CacheDirectory = value("CacheDirectory");
-                config.LibraryDirectory = value("LibraryDirectory");
-                config.QBitTorrentApiUrl = "http://127.0.0.1:8080/api/v2/";
-                config.StartupBufferMiB = integerValue("StartupBufferMiB");
-                config.CleanupGraceSeconds = integerValue("CleanupGraceSeconds");
-                config.QBitTorrentTimeoutSeconds = integerValue("QBitTorrentTimeoutSeconds");
+                const config = {
+                    RssFeedUrl: "https://atlas.rssly.org/feed/0/all/all/0/en",
+                    MovieSearchApiUrl: "https://movies-api.accel.li/api/v2",
+                    CacheDirectory: value("CacheDirectory"),
+                    LibraryDirectory: value("LibraryDirectory"),
+                    QBitTorrentApiUrl: "http://127.0.0.1:8080/api/v2/",
+                    StartupBufferMiB: integerValue("StartupBufferMiB"),
+                    CleanupGraceSeconds: integerValue("CleanupGraceSeconds"),
+                    QBitTorrentTimeoutSeconds: integerValue("QBitTorrentTimeoutSeconds")
+                };
 
                 const saveResponse = await authenticatedFetch(
                     "/SimpleMovieFeed/configuration",
