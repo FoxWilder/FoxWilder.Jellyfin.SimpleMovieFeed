@@ -10,20 +10,17 @@ namespace Jellyfin.Plugin.SimpleMovieFeed;
 public sealed class ApiController : ControllerBase
 {
     private readonly YtsApiService _ytsService;
-    private readonly TorrentStreamService _torrentService;
     private readonly QBitTorrentService _aria2Service;
     private readonly WatchHistoryService _historyService;
     private readonly JellyfinMovieLibraryService _libraryService;
 
     public ApiController(
         YtsApiService ytsService,
-        TorrentStreamService torrentService,
         QBitTorrentService aria2Service,
         WatchHistoryService historyService,
         JellyfinMovieLibraryService libraryService)
     {
         _ytsService = ytsService;
-        _torrentService = torrentService;
         _aria2Service = aria2Service;
         _historyService = historyService;
         _libraryService = libraryService;
@@ -1234,30 +1231,6 @@ public sealed class ApiController : ControllerBase
                 });
         }
     }
-    [HttpPost("stop/{movieId}")]
-    [Authorize]
-    public IActionResult StopStream(
-        int movieId,
-        [FromBody] StreamRequest request)
-    {
-        _torrentService.StopStream(
-            request.MovieTitle);
-
-        return NoContent();
-    }
-
-    [HttpDelete("cache/{movieId}")]
-    [Authorize]
-    public IActionResult ClearCache(
-        int movieId,
-        [FromBody] StreamRequest request)
-    {
-        _torrentService.ClearMovieCache(
-            request.MovieTitle);
-
-        return NoContent();
-    }
-
     [HttpPost("watchhistory")]
     [Authorize]
     public async Task<IActionResult> UpdateWatchHistory(

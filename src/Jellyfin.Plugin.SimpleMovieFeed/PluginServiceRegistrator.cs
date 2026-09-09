@@ -13,7 +13,6 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHttpClient<YtsApiService>();
 
         serviceCollection.AddSingleton<QBitTorrentService>();
-        serviceCollection.AddSingleton<TorrentStreamService>();
         serviceCollection.AddSingleton<WatchHistoryService>();
 
         serviceCollection.AddHostedService<

@@ -18,6 +18,7 @@ The project uses Semantic Versioning.
 
 - Runtime services now consume centralized configurable settings instead of fixed operational values.
 - Configuration changes that affect initialized paths or qBittorrent connectivity are explicitly reported as restart-required.
+
 ## [1.0.0] - 2026-09-09
 
 ### Added
