@@ -1,16 +1,307 @@
-﻿<!DOCTYPE html><html><head><meta charset="utf-8"><title>Simple Movie Feed</title></head><body>
-<div data-role="page" class="page type-interior pluginConfigurationPage">
-<div class="content-primary">
-<h1>Simple Movie Feed</h1>
-<p style="font-size: 16px; line-height: 1.6;">
-<strong>RSS Feed:</strong> https://atlas.rssly.org/feed/0/all/all/0/en<br/>
-<strong>Movie API:</strong> https://yts.gg/api<br/>
-<strong>Cache Directory:</strong> C:\JellyfinMovieCache<br/>
-<br/>
-This plugin provides:<br/>
-• <strong>What's New</strong> - Browse latest movies from RSS feed<br/>
-• <strong>Search</strong> - Search and stream movies via YTS API<br/>
-• Stream movies without downloading<br/>
-</p>
-</div></div>
-</body></html>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>SimpleMovieFeed</title>
+</head>
+<body>
+<div id="SimpleMovieFeedConfigurationPage"
+     data-role="page"
+     class="page type-interior pluginConfigurationPage">
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="SimpleMovieFeedConfigurationForm">
+                <div class="verticalSection verticalSection-extrabottompadding">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle">SimpleMovieFeed</h2>
+                    </div>
+
+                    <p>
+                        Configure movie sources, storage, buffering, cleanup, and qBittorrent integration.
+                    </p>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="RssFeedUrl">RSS feed URL</label>
+                        <input id="RssFeedUrl" type="url" is="emby-input" required />
+                        <div class="fieldDescription">Feed used by What's New.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MovieSearchApiUrl">Movie API URL</label>
+                        <input id="MovieSearchApiUrl" type="url" is="emby-input" required />
+                        <div class="fieldDescription">API used for movie search and recommendations.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="CacheDirectory">Cache directory</label>
+                        <input id="CacheDirectory" type="text" is="emby-input" required />
+                        <div class="fieldDescription">Stores temporary torrent data and persistent resume/catalog state. Restart Jellyfin after changing this path.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="LibraryDirectory">Movie library directory</label>
+                        <input id="LibraryDirectory" type="text" is="emby-input" required />
+                        <div class="fieldDescription">Stores persistent .strm, poster, and NFO identity files. Restart Jellyfin after changing this path.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="QBitTorrentApiUrl">qBittorrent API URL</label>
+                        <input id="QBitTorrentApiUrl" type="url" is="emby-input" required />
+                        <div class="fieldDescription">Base URL of the qBittorrent Web API. Restart Jellyfin after changing it.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="QBitTorrentApiKey">qBittorrent API key / password</label>
+                        <input id="QBitTorrentApiKey" type="password" is="emby-input" autocomplete="new-password" />
+                        <div id="QBitTorrentCredentialStatus" class="fieldDescription">Checking protected credential status...</div>
+                        <div class="fieldDescription">Leave blank to keep the currently protected credential. The secret is not stored in the normal Jellyfin plugin configuration.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="StartupBufferMiB">Startup buffer (MiB)</label>
+                        <input id="StartupBufferMiB" type="number" is="emby-input" min="1" max="4096" step="1" required />
+                        <div class="fieldDescription">Amount that must be cached before playback begins.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="CleanupGraceSeconds">Cleanup grace period (seconds)</label>
+                        <input id="CleanupGraceSeconds" type="number" is="emby-input" min="0" max="3600" step="1" required />
+                        <div class="fieldDescription">Delay after playback stops before disposable torrent data is removed.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="QBitTorrentTimeoutSeconds">qBittorrent timeout (seconds)</label>
+                        <input id="QBitTorrentTimeoutSeconds" type="number" is="emby-input" min="5" max="300" step="1" required />
+                        <div class="fieldDescription">HTTP timeout for qBittorrent API operations. Restart Jellyfin after changing it.</div>
+                    </div>
+
+                    <div class="fieldDescription" style="margin: 1.5em 0;">
+                        Settings marked as requiring a restart are applied when Jellyfin next starts. Saving a new qBittorrent credential takes effect without exposing the stored secret.
+                    </div>
+
+                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    (function () {
+        "use strict";
+
+        const pluginId = "d3d9d8e8-4a53-4a0d-9a5b-8a1b5c3b0d21";
+        const page = document.querySelector("#SimpleMovieFeedConfigurationPage");
+        const form = document.querySelector("#SimpleMovieFeedConfigurationForm");
+
+        function value(id) {
+            return document.querySelector("#" + id).value.trim();
+        }
+
+        function integerValue(id) {
+            return Number.parseInt(value(id), 10);
+        }
+
+        function setValue(id, newValue) {
+            document.querySelector("#" + id).value =
+                newValue === null || newValue === undefined
+                    ? ""
+                    : newValue;
+        }
+
+        function requestUrl(path) {
+            if (ApiClient.getUrl) {
+                return ApiClient.getUrl(path);
+            }
+
+            return path;
+        }
+
+        function authenticatedFetch(path, options) {
+            const request = Object.assign({}, options || {});
+            request.headers = Object.assign({}, request.headers || {});
+
+            if (ApiClient.accessToken) {
+                request.headers["X-Emby-Token"] = ApiClient.accessToken();
+            }
+
+            return fetch(requestUrl(path), request);
+        }
+
+        async function loadCredentialStatus() {
+            const statusElement =
+                document.querySelector("#QBitTorrentCredentialStatus");
+
+            try {
+                const response = await authenticatedFetch(
+                    "/SimpleMovieFeed/configuration/status",
+                    { method: "GET" }
+                );
+
+                if (!response.ok) {
+                    throw new Error("HTTP " + response.status);
+                }
+
+                const status = await response.json();
+
+                if (!status.credentialStorageSupported) {
+                    statusElement.textContent =
+                        "Protected credential storage is unavailable on this platform.";
+                } else if (status.credentialConfigured) {
+                    statusElement.textContent =
+                        "A protected qBittorrent credential is configured.";
+                } else {
+                    statusElement.textContent =
+                        "No qBittorrent credential is configured.";
+                }
+            } catch (error) {
+                statusElement.textContent =
+                    "Unable to read credential status.";
+            }
+        }
+
+        async function loadConfiguration() {
+            Dashboard.showLoadingMsg();
+
+            try {
+                const config =
+                    await ApiClient.getPluginConfiguration(pluginId);
+
+                setValue("RssFeedUrl", config.RssFeedUrl);
+                setValue("MovieSearchApiUrl", config.MovieSearchApiUrl);
+                setValue("CacheDirectory", config.CacheDirectory);
+                setValue("LibraryDirectory", config.LibraryDirectory);
+                setValue("QBitTorrentApiUrl", config.QBitTorrentApiUrl);
+                setValue("StartupBufferMiB", config.StartupBufferMiB);
+                setValue("CleanupGraceSeconds", config.CleanupGraceSeconds);
+                setValue("QBitTorrentTimeoutSeconds", config.QBitTorrentTimeoutSeconds);
+                setValue("QBitTorrentApiKey", "");
+
+                await loadCredentialStatus();
+            } finally {
+                Dashboard.hideLoadingMsg();
+            }
+        }
+
+        async function saveCredentialIfProvided() {
+            const secret = value("QBitTorrentApiKey");
+
+            if (!secret) {
+                return;
+            }
+
+            const response = await authenticatedFetch(
+                "/SimpleMovieFeed/configuration/credential",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        ApiKey: secret
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Unable to save protected qBittorrent credential (HTTP " +
+                    response.status +
+                    ")."
+                );
+            }
+
+            setValue("QBitTorrentApiKey", "");
+        }
+
+        async function saveConfiguration(event) {
+            event.preventDefault();
+
+            if (!form.reportValidity()) {
+                return false;
+            }
+
+            Dashboard.showLoadingMsg();
+
+            try {
+                const config =
+                    await ApiClient.getPluginConfiguration(pluginId);
+
+                config.RssFeedUrl = value("RssFeedUrl");
+                config.MovieSearchApiUrl = value("MovieSearchApiUrl");
+                config.CacheDirectory = value("CacheDirectory");
+                config.LibraryDirectory = value("LibraryDirectory");
+                config.QBitTorrentApiUrl = value("QBitTorrentApiUrl");
+                config.StartupBufferMiB = integerValue("StartupBufferMiB");
+                config.CleanupGraceSeconds = integerValue("CleanupGraceSeconds");
+                config.QBitTorrentTimeoutSeconds = integerValue("QBitTorrentTimeoutSeconds");
+
+                const saveResponse = await authenticatedFetch(
+                    "/SimpleMovieFeed/configuration",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(config)
+                    }
+                );
+
+                if (!saveResponse.ok) {
+                    let message =
+                        "Unable to save SimpleMovieFeed configuration.";
+
+                    try {
+                        const failure = await saveResponse.json();
+
+                        if (failure && failure.error) {
+                            message = failure.error;
+                        }
+                    } catch (error) {
+                        console.warn(
+                            "SimpleMovieFeed: unable to read configuration error response.",
+                            error
+                        );
+                    }
+
+                    throw new Error(message);
+                }
+
+                await saveCredentialIfProvided();
+                await loadCredentialStatus();
+
+                if (Dashboard.processPluginConfigurationUpdateResult) {
+                    Dashboard.processPluginConfigurationUpdateResult({});
+                }
+            } catch (error) {
+                console.error(
+                    "SimpleMovieFeed configuration save failed.",
+                    error
+                );
+
+                if (Dashboard.alert) {
+                    Dashboard.alert(
+                        error.message ||
+                        "Unable to save SimpleMovieFeed configuration."
+                    );
+                } else {
+                    window.alert(
+                        error.message ||
+                        "Unable to save SimpleMovieFeed configuration."
+                    );
+                }
+            } finally {
+                Dashboard.hideLoadingMsg();
+            }
+
+            return false;
+        }
+
+        page.addEventListener("pageshow", loadConfiguration);
+        form.addEventListener("submit", saveConfiguration);
+    }());
+</script>
+</body>
+</html>

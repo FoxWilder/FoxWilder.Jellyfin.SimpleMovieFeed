@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Controller.Net;
+using MediaBrowser.Controller.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -10,20 +10,17 @@ namespace Jellyfin.Plugin.SimpleMovieFeed;
 public sealed class ApiController : ControllerBase
 {
     private readonly YtsApiService _ytsService;
-    private readonly TorrentStreamService _torrentService;
     private readonly QBitTorrentService _aria2Service;
     private readonly WatchHistoryService _historyService;
     private readonly JellyfinMovieLibraryService _libraryService;
 
     public ApiController(
         YtsApiService ytsService,
-        TorrentStreamService torrentService,
         QBitTorrentService aria2Service,
         WatchHistoryService historyService,
         JellyfinMovieLibraryService libraryService)
     {
         _ytsService = ytsService;
-        _torrentService = torrentService;
         _aria2Service = aria2Service;
         _historyService = historyService;
         _libraryService = libraryService;
@@ -288,7 +285,7 @@ public sealed class ApiController : ControllerBase
 
                     var path =
                         Path.Combine(
-                            @"C:\JellyfinMovieCache",
+                            RuntimeSettings.CacheDirectory,
                             relativePath);
 
                     Console.WriteLine(
@@ -343,7 +340,7 @@ public sealed class ApiController : ControllerBase
             var actualPath =
                 Directory
                     .EnumerateFiles(
-                        @"C:\JellyfinMovieCache",
+                        RuntimeSettings.CacheDirectory,
                         fileName,
                         SearchOption.AllDirectories)
                     .OrderByDescending(
@@ -669,8 +666,8 @@ public sealed class ApiController : ControllerBase
 
             string? videoPath = null;
 
-            const long minimumStartupBytes =
-                256L * 1024L * 1024L;
+            var minimumStartupBytes =
+                RuntimeSettings.StartupBufferBytes;
 
             for (
                 var attempt = 0;
@@ -753,7 +750,7 @@ public sealed class ApiController : ControllerBase
                 {
                     var candidate =
                         Path.Combine(
-                            @"C:\JellyfinMovieCache",
+                            RuntimeSettings.CacheDirectory,
                             bestRelativePath);
 
                     if (System.IO.File.Exists(
@@ -772,7 +769,7 @@ public sealed class ApiController : ControllerBase
                         videoPath =
                             Directory
                                 .EnumerateFiles(
-                                    @"C:\JellyfinMovieCache",
+                                    RuntimeSettings.CacheDirectory,
                                     fileName,
                                     SearchOption.AllDirectories)
                                 .OrderByDescending(
@@ -976,30 +973,264 @@ public sealed class ApiController : ControllerBase
         }
     }
 
-    [HttpPost("stop/{movieId}")]
+    [HttpGet("runtime")]
     [Authorize]
-    public IActionResult StopStream(
-        int movieId,
-        [FromBody] StreamRequest request)
+    public ActionResult<object> GetRuntimeSettings()
     {
-        _torrentService.StopStream(
-            request.MovieTitle);
+        return Ok(
+            new
+            {
+                startupBufferMiB =
+                    RuntimeSettings.StartupBufferMiB
+            });
+    }
+    [HttpGet("configuration/status")]
+    [Authorize(Policy = "RequiresElevation")]
+    public ActionResult<object> GetConfigurationStatus()
+    {
+        var configuration = RuntimeSettings.Current;
 
-        return NoContent();
+        return Ok(
+            new
+            {
+                credentialConfigured =
+                    QBitTorrentService.IsCredentialConfigured,
+                credentialStorageSupported =
+                    OperatingSystem.IsWindows(),
+                cacheDirectory =
+                    RuntimeSettings.CacheDirectory,
+                libraryDirectory =
+                    RuntimeSettings.LibraryDirectory,
+                qBitTorrentApiUrl =
+                    RuntimeSettings.QBitTorrentApiUri.ToString(),
+                startupBufferMiB =
+                    RuntimeSettings.StartupBufferMiB,
+                cleanupGraceSeconds =
+                    (int)RuntimeSettings.CleanupGrace.TotalSeconds,
+                qBitTorrentTimeoutSeconds =
+                    (int)RuntimeSettings.QBitTorrentTimeout.TotalSeconds,
+                rssFeedUrl =
+                    RuntimeSettings.RssFeedUrl,
+                movieSearchApiUrl =
+                    RuntimeSettings.MovieSearchApiUrl,
+                restartRequiredSettings = new[]
+                {
+                    nameof(configuration.CacheDirectory),
+                    nameof(configuration.LibraryDirectory),
+                    nameof(configuration.QBitTorrentApiUrl),
+                    nameof(configuration.QBitTorrentTimeoutSeconds)
+                }
+            });
     }
 
-    [HttpDelete("cache/{movieId}")]
-    [Authorize]
-    public IActionResult ClearCache(
-        int movieId,
-        [FromBody] StreamRequest request)
+    [HttpPost("configuration")]
+    [Authorize(Policy = "RequiresElevation")]
+    public IActionResult UpdateConfiguration(
+        [FromBody] PluginConfiguration request)
     {
-        _torrentService.ClearMovieCache(
-            request.MovieTitle);
+        if (request is null)
+        {
+            return BadRequest(
+                new { error = "Configuration is required." });
+        }
 
-        return NoContent();
+        if (!TryValidateHttpUrl(
+                request.RssFeedUrl,
+                out var rssFeedUrl))
+        {
+            return BadRequest(
+                new { error = "RSS feed URL must be a valid HTTP or HTTPS URL." });
+        }
+
+        if (!TryValidateHttpUrl(
+                request.MovieSearchApiUrl,
+                out var movieSearchApiUrl))
+        {
+            return BadRequest(
+                new { error = "Movie API URL must be a valid HTTP or HTTPS URL." });
+        }
+
+        if (!TryValidateHttpUrl(
+                request.QBitTorrentApiUrl,
+                out var qBitTorrentApiUrl))
+        {
+            return BadRequest(
+                new { error = "qBittorrent API URL must be a valid HTTP or HTTPS URL." });
+        }
+
+        if (!TryValidateDirectory(
+                request.CacheDirectory,
+                out var cacheDirectory))
+        {
+            return BadRequest(
+                new { error = "Cache directory must be a valid absolute path." });
+        }
+
+        if (!TryValidateDirectory(
+                request.LibraryDirectory,
+                out var libraryDirectory))
+        {
+            return BadRequest(
+                new { error = "Movie library directory must be a valid absolute path." });
+        }
+
+        if (request.StartupBufferMiB < 1 ||
+            request.StartupBufferMiB > 4096)
+        {
+            return BadRequest(
+                new { error = "Startup buffer must be between 1 and 4096 MiB." });
+        }
+
+        if (request.CleanupGraceSeconds < 0 ||
+            request.CleanupGraceSeconds > 3600)
+        {
+            return BadRequest(
+                new { error = "Cleanup grace period must be between 0 and 3600 seconds." });
+        }
+
+        if (request.QBitTorrentTimeoutSeconds < 5 ||
+            request.QBitTorrentTimeoutSeconds > 300)
+        {
+            return BadRequest(
+                new { error = "qBittorrent timeout must be between 5 and 300 seconds." });
+        }
+
+        request.RssFeedUrl = rssFeedUrl;
+        request.MovieSearchApiUrl =
+            movieSearchApiUrl.TrimEnd('/');
+        request.CacheDirectory = cacheDirectory;
+        request.LibraryDirectory = libraryDirectory;
+        request.QBitTorrentApiUrl =
+            qBitTorrentApiUrl.EndsWith("/", StringComparison.Ordinal)
+                ? qBitTorrentApiUrl
+                : qBitTorrentApiUrl + "/";
+
+        Plugin.Instance.UpdateConfiguration(request);
+
+        return Ok(
+            new
+            {
+                saved = true,
+                restartRequiredSettings = new[]
+                {
+                    nameof(request.CacheDirectory),
+                    nameof(request.LibraryDirectory),
+                    nameof(request.QBitTorrentApiUrl),
+                    nameof(request.QBitTorrentTimeoutSeconds)
+                }
+            });
     }
 
+    private static bool TryValidateHttpUrl(
+        string? value,
+        out string normalized)
+    {
+        normalized = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var selected = value.Trim();
+
+        if (!Uri.TryCreate(
+                selected,
+                UriKind.Absolute,
+                out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp &&
+             uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return false;
+        }
+
+        normalized = selected;
+        return true;
+    }
+
+    private static bool TryValidateDirectory(
+        string? value,
+        out string normalized)
+    {
+        normalized = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            var selected = value.Trim();
+
+            if (!Path.IsPathFullyQualified(selected))
+            {
+                return false;
+            }
+
+            normalized = Path.GetFullPath(selected);
+            return true;
+        }
+        catch (Exception ex)
+            when (ex is ArgumentException ||
+                  ex is NotSupportedException ||
+                  ex is PathTooLongException)
+        {
+            return false;
+        }
+    }
+    [HttpPost("configuration/credential")]
+    [Authorize(Policy = "RequiresElevation")]
+    public IActionResult UpdateQBitTorrentCredential(
+        [FromBody] QBitTorrentCredentialRequest request)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return BadRequest(
+                new
+                {
+                    error =
+                        "Protected credential storage is currently supported only on Windows."
+                });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ApiKey))
+        {
+            return BadRequest(
+                new
+                {
+                    error =
+                        "qBittorrent API key must not be empty."
+                });
+        }
+
+        try
+        {
+            _aria2Service.UpdateApiKey(request.ApiKey);
+
+            return Ok(
+                new
+                {
+                    credentialConfigured = true
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(
+                new
+                {
+                    error = ex.Message
+                });
+        }
+        catch (PlatformNotSupportedException ex)
+        {
+            return BadRequest(
+                new
+                {
+                    error = ex.Message
+                });
+        }
+    }
     [HttpPost("watchhistory")]
     [Authorize]
     public async Task<IActionResult> UpdateWatchHistory(
@@ -1030,6 +1261,11 @@ public sealed class ApiController : ControllerBase
 
         return Ok(history);
     }
+}
+
+public sealed class QBitTorrentCredentialRequest
+{
+    public string ApiKey { get; set; } = string.Empty;
 }
 
 public class StreamRequest

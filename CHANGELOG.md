@@ -4,6 +4,21 @@ All notable changes to SimpleMovieFeed are documented here.
 
 The project uses Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- Jellyfin dashboard settings for feed/API endpoints, cache/library directories, qBittorrent endpoint, startup buffer, cleanup grace period and qBittorrent timeout.
+- Protected write-only qBittorrent credential configuration on Windows using DPAPI machine-scope storage outside normal plugin configuration.
+- Administrator-only configuration status and validated configuration update endpoints.
+- Runtime startup-buffer synchronization for Jellyfin Web.
+- JavaScript syntax validation in GitHub Actions.
+
+### Changed
+
+- Runtime services now consume centralized configurable settings instead of fixed operational values.
+- Configuration changes that affect initialized paths or qBittorrent connectivity are explicitly reported as restart-required.
+
 ## [1.0.0] - 2026-09-09
 
 ### Added

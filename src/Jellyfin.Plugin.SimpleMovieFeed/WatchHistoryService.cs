@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace Jellyfin.Plugin.SimpleMovieFeed;
 
@@ -6,9 +6,13 @@ public class WatchHistoryService
 {
     private readonly string _historyFile;
 
-    public WatchHistoryService(string cacheDir)
+    public WatchHistoryService()
     {
-        _historyFile = Path.Combine(cacheDir, "watch_history.json");
+        Directory.CreateDirectory(RuntimeSettings.CacheDirectory);
+
+        _historyFile = Path.Combine(
+            RuntimeSettings.CacheDirectory,
+            "watch_history.json");
     }
 
     public async Task<UserWatchHistory> GetWatchHistoryAsync(string userId, int movieId)

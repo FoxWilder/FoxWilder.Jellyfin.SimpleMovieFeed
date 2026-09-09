@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -8,7 +8,7 @@ namespace Jellyfin.Plugin.SimpleMovieFeed;
 
 public sealed class QBitTorrentService
 {
-    private const string BaseUrl = "http://127.0.0.1:8080/api/v2/";
+
 
     private const string PluginTag = "simplemoviefeed";
 
@@ -22,21 +22,104 @@ public sealed class QBitTorrentService
     private readonly HttpClient _http;
     private readonly string _downloadDirectory;
 
-    public QBitTorrentService(string downloadDirectory)
+    public QBitTorrentService()
     {
-        _downloadDirectory = downloadDirectory;
+        _downloadDirectory = RuntimeSettings.CacheDirectory;
 
         Directory.CreateDirectory(_downloadDirectory);
 
         _http = new HttpClient
         {
-            BaseAddress = new Uri(BaseUrl),
-            Timeout = TimeSpan.FromSeconds(30)
+            BaseAddress = RuntimeSettings.QBitTorrentApiUri,
+            Timeout = RuntimeSettings.QBitTorrentTimeout
         };
 
         // Authentication is initialized lazily on the first qBittorrent request.
     }
 
+    public static bool IsCredentialConfigured =>
+        File.Exists(SecretPath);
+
+    public static void SaveApiKey(string apiKey)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException(
+                "qBittorrent credential protection requires Windows DPAPI.");
+        }
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new ArgumentException(
+                "qBittorrent API key must not be empty.",
+                nameof(apiKey));
+        }
+
+        var plainBytes =
+            Encoding.UTF8.GetBytes(apiKey.Trim());
+
+        byte[]? encrypted = null;
+
+        try
+        {
+            encrypted = Protect(
+                plainBytes,
+                Entropy);
+
+            var directory = Path.GetDirectoryName(SecretPath);
+
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                throw new InvalidOperationException(
+                    "Could not determine qBittorrent secret directory.");
+            }
+
+            Directory.CreateDirectory(directory);
+
+            var temporaryPath =
+                SecretPath + ".tmp-" + Guid.NewGuid().ToString("N");
+
+            try
+            {
+                File.WriteAllBytes(
+                    temporaryPath,
+                    encrypted);
+
+                File.Move(
+                    temporaryPath,
+                    SecretPath,
+                    true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
+        }
+        finally
+        {
+            Array.Clear(
+                plainBytes,
+                0,
+                plainBytes.Length);
+
+            if (encrypted is not null)
+            {
+                Array.Clear(
+                    encrypted,
+                    0,
+                    encrypted.Length);
+            }
+        }
+    }
+    public void UpdateApiKey(string apiKey)
+    {
+        SaveApiKey(apiKey);
+
+        _http.DefaultRequestHeaders.Authorization = null;
+    }
     private static string ReadApiKey()
     {
         if (!OperatingSystem.IsWindows())
@@ -61,6 +144,53 @@ public sealed class QBitTorrentService
         return Encoding.UTF8.GetString(decrypted);
     }
 
+    private static byte[] Protect(
+        byte[] plain,
+        byte[] entropy)
+    {
+        var input = new DATA_BLOB();
+        var entropyBlob = new DATA_BLOB();
+        var output = new DATA_BLOB();
+
+        try
+        {
+            input = CreateBlob(plain);
+            entropyBlob = CreateBlob(entropy);
+
+            if (!CryptProtectData(
+                    ref input,
+                    null,
+                    ref entropyBlob,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    0x4,
+                    ref output))
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Windows DPAPI failed to encrypt the qBittorrent API key.");
+            }
+
+            var result = new byte[output.cbData];
+
+            if (output.cbData > 0)
+            {
+                Marshal.Copy(
+                    output.pbData,
+                    result,
+                    0,
+                    output.cbData);
+            }
+
+            return result;
+        }
+        finally
+        {
+            FreeBlob(ref input);
+            FreeBlob(ref entropyBlob);
+            FreeBlob(ref output);
+        }
+    }
     private static byte[] Unprotect(
         byte[] encrypted,
         byte[] entropy)
@@ -146,6 +276,19 @@ public sealed class QBitTorrentService
         public IntPtr pbData;
     }
 
+    [DllImport(
+        "crypt32.dll",
+        SetLastError = true,
+        CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CryptProtectData(
+        ref DATA_BLOB pDataIn,
+        string? szDataDescr,
+        ref DATA_BLOB pOptionalEntropy,
+        IntPtr pvReserved,
+        IntPtr pPromptStruct,
+        int dwFlags,
+        ref DATA_BLOB pDataOut);
     [DllImport(
         "crypt32.dll",
         SetLastError = true,

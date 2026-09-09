@@ -1,4 +1,4 @@
-﻿using MediaBrowser.Controller;
+using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,33 +10,15 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         IServiceCollection serviceCollection,
         IServerApplicationHost applicationHost)
     {
-        var cacheDir = @"C:\JellyfinMovieCache";
-        var libraryDir = @"C:\JellyfinMovieFeedLibrary";
-
-        Directory.CreateDirectory(cacheDir);
-        Directory.CreateDirectory(libraryDir);
-
-        PlaybackStateStore.Initialize(
-            cacheDir);
-
         serviceCollection.AddHttpClient<YtsApiService>();
 
-        serviceCollection.AddSingleton<QBitTorrentService>(
-            _ => new QBitTorrentService(cacheDir));
-
-        serviceCollection.AddSingleton(
-            new TorrentStreamService(cacheDir));
-
-        serviceCollection.AddSingleton(
-            new WatchHistoryService(cacheDir));
+        serviceCollection.AddSingleton<QBitTorrentService>();
+        serviceCollection.AddSingleton<WatchHistoryService>();
 
         serviceCollection.AddHostedService<
             PlaybackCleanupEntryPoint>();
 
-        serviceCollection.AddSingleton<JellyfinMovieLibraryService>(
-            sp => new JellyfinMovieLibraryService(
-                libraryDir,
-                sp.GetRequiredService<MediaBrowser.Controller.Library.ILibraryManager>()));
+        serviceCollection.AddSingleton<JellyfinMovieLibraryService>();
     }
 }
 
