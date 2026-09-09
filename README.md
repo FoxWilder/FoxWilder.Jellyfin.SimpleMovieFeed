@@ -59,6 +59,9 @@ See **[Installation](docs/INSTALLATION.md)**.
 Official installable packages are published through [GitHub Releases](https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases).
 
 ## Configuration
+> [!NOTE]
+> SimpleMovieFeed uses supported fixed endpoints for the RSS feed, movie search API, and local qBittorrent Web API. These values are shown read-only in Jellyfin. Cache/library paths and playback timing settings remain configurable. The qBittorrent credential is stored separately and is never written to normal plugin configuration.
+
 
 Runtime configuration is available from the SimpleMovieFeed settings page in the Jellyfin dashboard. See **[Configuration](docs/CONFIGURATION.md)** for defaults, validation ranges, restart requirements and credential-storage details.
 

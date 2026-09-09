@@ -1017,7 +1017,6 @@ public sealed class ApiController : ControllerBase
                 {
                     nameof(configuration.CacheDirectory),
                     nameof(configuration.LibraryDirectory),
-                    nameof(configuration.QBitTorrentApiUrl),
                     nameof(configuration.QBitTorrentTimeoutSeconds)
                 }
             });
@@ -1034,29 +1033,8 @@ public sealed class ApiController : ControllerBase
                 new { error = "Configuration is required." });
         }
 
-        if (!TryValidateHttpUrl(
-                request.RssFeedUrl,
-                out var rssFeedUrl))
-        {
-            return BadRequest(
-                new { error = "RSS feed URL must be a valid HTTP or HTTPS URL." });
-        }
 
-        if (!TryValidateHttpUrl(
-                request.MovieSearchApiUrl,
-                out var movieSearchApiUrl))
-        {
-            return BadRequest(
-                new { error = "Movie API URL must be a valid HTTP or HTTPS URL." });
-        }
 
-        if (!TryValidateHttpUrl(
-                request.QBitTorrentApiUrl,
-                out var qBitTorrentApiUrl))
-        {
-            return BadRequest(
-                new { error = "qBittorrent API URL must be a valid HTTP or HTTPS URL." });
-        }
 
         if (!TryValidateDirectory(
                 request.CacheDirectory,
@@ -1095,15 +1073,14 @@ public sealed class ApiController : ControllerBase
                 new { error = "qBittorrent timeout must be between 5 and 300 seconds." });
         }
 
-        request.RssFeedUrl = rssFeedUrl;
+        request.RssFeedUrl =
+            PluginConfiguration.RssFeedUrlDefault;
         request.MovieSearchApiUrl =
-            movieSearchApiUrl.TrimEnd('/');
+            PluginConfiguration.MovieSearchApiUrlDefault;
         request.CacheDirectory = cacheDirectory;
         request.LibraryDirectory = libraryDirectory;
         request.QBitTorrentApiUrl =
-            qBitTorrentApiUrl.EndsWith("/", StringComparison.Ordinal)
-                ? qBitTorrentApiUrl
-                : qBitTorrentApiUrl + "/";
+            PluginConfiguration.QBitTorrentApiUrlDefault;
 
         Plugin.Instance.UpdateConfiguration(request);
 
@@ -1115,7 +1092,6 @@ public sealed class ApiController : ControllerBase
                 {
                     nameof(request.CacheDirectory),
                     nameof(request.LibraryDirectory),
-                    nameof(request.QBitTorrentApiUrl),
                     nameof(request.QBitTorrentTimeoutSeconds)
                 }
             });
