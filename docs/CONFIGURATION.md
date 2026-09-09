@@ -1,4 +1,13 @@
 # Configuration
+> [!NOTE]
+> The RSS feed URL, Movie API URL, and qBittorrent API URL are fixed supported endpoints. They are displayed read-only in the Jellyfin settings page and cannot be overridden by saved configuration.
+
+Fixed endpoints:
+
+- RSS feed: https://atlas.rssly.org/feed/0/all/all/0/en
+- Movie API: https://movies-api.accel.li/api/v2
+- qBittorrent API: http://127.0.0.1:8080/api/v2/
+
 
 SimpleMovieFeed runtime settings are configured from the plugin settings page in the Jellyfin dashboard.
 
@@ -8,11 +17,11 @@ Normal settings are stored using Jellyfin's plugin configuration system. The qBi
 
 | Setting | Default | Validation | Restart required |
 | --- | --- | --- | --- |
-| RSS feed URL | `https://atlas.rssly.org/feed/0/all/all/0/en` | Absolute HTTP/HTTPS URL | No |
-| Movie API URL | `https://movies-api.accel.li/api/v2` | Absolute HTTP/HTTPS URL | No |
+| RSS feed URL | `https://atlas.rssly.org/feed/0/all/all/0/en` | Fixed / read-only | No |
+| Movie API URL | `https://movies-api.accel.li/api/v2` | Fixed / read-only | No |
 | Cache directory | `C:\JellyfinMovieCache` | Absolute path | Yes |
 | Movie library directory | `C:\JellyfinMovieFeedLibrary` | Absolute path | Yes |
-| qBittorrent API URL | `http://127.0.0.1:8080/api/v2/` | Absolute HTTP/HTTPS URL | Yes |
+| qBittorrent API URL | `http://127.0.0.1:8080/api/v2/` | Fixed / read-only | No |
 | Startup buffer | `256 MiB` | 1-4096 MiB | No |
 | Cleanup grace period | `30 seconds` | 0-3600 seconds | No |
 | qBittorrent timeout | `30 seconds` | 5-300 seconds | Yes |

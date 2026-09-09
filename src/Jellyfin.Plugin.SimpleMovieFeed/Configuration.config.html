@@ -22,14 +22,14 @@
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="RssFeedUrl">RSS feed URL</label>
-                        <input id="RssFeedUrl" type="url" is="emby-input" required />
-                        <div class="fieldDescription">Feed used by What's New.</div>
+                        <input id="RssFeedUrl" type="url" is="emby-input" required readonly />
+                        <div class="fieldDescription">Fixed feed used by What's New.</div>
                     </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="MovieSearchApiUrl">Movie API URL</label>
-                        <input id="MovieSearchApiUrl" type="url" is="emby-input" required />
-                        <div class="fieldDescription">API used for movie search and recommendations.</div>
+                        <input id="MovieSearchApiUrl" type="url" is="emby-input" required readonly />
+                        <div class="fieldDescription">Fixed API used for movie search and recommendations.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -46,8 +46,8 @@
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="QBitTorrentApiUrl">qBittorrent API URL</label>
-                        <input id="QBitTorrentApiUrl" type="url" is="emby-input" required />
-                        <div class="fieldDescription">Base URL of the qBittorrent Web API. Restart Jellyfin after changing it.</div>
+                        <input id="QBitTorrentApiUrl" type="url" is="emby-input" required readonly />
+                        <div class="fieldDescription">Fixed base URL of the qBittorrent Web API.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -229,11 +229,11 @@
                 const config =
                     await ApiClient.getPluginConfiguration(pluginId);
 
-                config.RssFeedUrl = value("RssFeedUrl");
-                config.MovieSearchApiUrl = value("MovieSearchApiUrl");
+                config.RssFeedUrl = "https://atlas.rssly.org/feed/0/all/all/0/en";
+                config.MovieSearchApiUrl = "https://movies-api.accel.li/api/v2";
                 config.CacheDirectory = value("CacheDirectory");
                 config.LibraryDirectory = value("LibraryDirectory");
-                config.QBitTorrentApiUrl = value("QBitTorrentApiUrl");
+                config.QBitTorrentApiUrl = "http://127.0.0.1:8080/api/v2/";
                 config.StartupBufferMiB = integerValue("StartupBufferMiB");
                 config.CleanupGraceSeconds = integerValue("CleanupGraceSeconds");
                 config.QBitTorrentTimeoutSeconds = integerValue("QBitTorrentTimeoutSeconds");

@@ -27,38 +27,9 @@ public static class RuntimeSettings
             Current.LibraryDirectory,
             PluginConfiguration.LibraryDirectoryDefault);
 
-    public static Uri QBitTorrentApiUri
-    {
-        get
-        {
-            var value = Current.QBitTorrentApiUrl;
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                value = PluginConfiguration.QBitTorrentApiUrlDefault;
-            }
-
-            value = value.Trim();
-
-            if (!value.EndsWith("/", StringComparison.Ordinal))
-            {
-                value += "/";
-            }
-
-            if (!Uri.TryCreate(
-                    value,
-                    UriKind.Absolute,
-                    out var uri) ||
-                (uri.Scheme != Uri.UriSchemeHttp &&
-                 uri.Scheme != Uri.UriSchemeHttps))
-            {
-                return new Uri(
-                    PluginConfiguration.QBitTorrentApiUrlDefault);
-            }
-
-            return uri;
-        }
-    }
+    public static Uri QBitTorrentApiUri =>
+        new(
+            PluginConfiguration.QBitTorrentApiUrlDefault);
 
     public static long StartupBufferBytes =>
         (long)Math.Clamp(
@@ -87,14 +58,10 @@ public static class RuntimeSettings
                 300));
 
     public static string MovieSearchApiUrl =>
-        string.IsNullOrWhiteSpace(Current.MovieSearchApiUrl)
-            ? PluginConfiguration.MovieSearchApiUrlDefault
-            : Current.MovieSearchApiUrl.TrimEnd('/');
+        PluginConfiguration.MovieSearchApiUrlDefault;
 
     public static string RssFeedUrl =>
-        string.IsNullOrWhiteSpace(Current.RssFeedUrl)
-            ? PluginConfiguration.RssFeedUrlDefault
-            : Current.RssFeedUrl.Trim();
+        PluginConfiguration.RssFeedUrlDefault;
 
     private static string NormalizePath(
         string? value,

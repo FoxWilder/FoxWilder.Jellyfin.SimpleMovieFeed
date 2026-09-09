@@ -6,6 +6,12 @@ The project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored working defaults for fresh plugin deployments.
+- Made the RSS feed, movie API, and qBittorrent API endpoints fixed and read-only.
+- Ensured saved configurable settings are persisted through Jellyfin and read dynamically at runtime.
+
 ## [1.1.0] - 2026-09-09
 
 ### Added
