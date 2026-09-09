@@ -299,8 +299,19 @@
             return false;
         }
 
-        page.addEventListener("pageshow", loadConfiguration);
+        function startConfigurationLoad() {
+            loadConfiguration().catch(function (error) {
+                console.error(
+                    "SimpleMovieFeed configuration load failed.",
+                    error
+                );
+            });
+        }
+
+        page.addEventListener("pageshow", startConfigurationLoad);
         form.addEventListener("submit", saveConfiguration);
+
+        startConfigurationLoad();
     }());
 </script>
 </body>
