@@ -6,6 +6,8 @@ The project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-09
+
 ### Fixed
 
 - Restored working defaults for fresh plugin deployments.
@@ -52,5 +54,6 @@ The project uses Semantic Versioning.
 - Startup cleanup of disposable SimpleMovieFeed data.
 - Consistent Jellyfin Web card and section presentation.
 
+[1.2.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.0
 [1.1.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.1.0
 [1.0.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.0.0
