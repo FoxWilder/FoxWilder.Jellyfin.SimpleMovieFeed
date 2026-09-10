@@ -6,6 +6,13 @@ All notable changes to SimpleMovieFeed are documented here.
 The project uses Semantic Versioning.
 
 ## [Unreleased]
+## [1.2.5] - 2026-09-10
+
+### Fixed
+
+- Load the SimpleMovieFeed configuration controller from the global plugin lifecycle instead of relying on the configuration page to execute embedded JavaScript.
+- Ensure configuration loading and saving initialize correctly after Jellyfin Web navigation events.
+
 
 ## [1.2.4] - 2026-09-10
 
