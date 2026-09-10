@@ -183,6 +183,96 @@ public static class PlaybackStateStore
             record;
     }
 
+    public static bool RemovePendingStartup(
+        Guid userId,
+        int movieId,
+        string torrentHash)
+    {
+        foreach (var entry in PendingByLibraryPath)
+        {
+            var record = entry.Value;
+
+            if (
+                record.UserId != userId ||
+                record.MovieId != movieId ||
+                !string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (PendingByLibraryPath.TryRemove(
+                    entry.Key,
+                    out _))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool RemovePreparedStartup(
+        Guid userId,
+        int movieId,
+        string torrentHash)
+    {
+        foreach (var entry in ActiveByItemId)
+        {
+            var record = entry.Value;
+
+            if (
+                record.UserId != userId ||
+                record.MovieId != movieId ||
+                !string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (ActiveByItemId.TryRemove(
+                    entry.Key,
+                    out _))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool IsTorrentInUse(
+        string torrentHash)
+    {
+        foreach (var record in PendingByLibraryPath.Values)
+        {
+            if (string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        foreach (var record in ActiveByItemId.Values)
+        {
+            if (string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static void AttachItem(
         Guid jellyfinItemId,
         string libraryPath)

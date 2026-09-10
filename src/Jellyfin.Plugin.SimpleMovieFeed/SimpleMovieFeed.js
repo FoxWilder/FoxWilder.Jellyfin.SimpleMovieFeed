@@ -1616,6 +1616,42 @@ function getApiClient() {
             return;
         }
 
+        const previousStartup =
+            window.__simpleMovieFeedStartupSession;
+
+        if (
+            previousStartup &&
+            typeof previousStartup.cancel ===
+                "function"
+        ) {
+            previousStartup.cancel(
+                "superseded"
+            );
+        }
+
+        const currentUserId =
+            (
+                api.getCurrentUserId
+            )
+                ? api.getCurrentUserId()
+                : "";
+
+        const startupSession = {
+            cancelled: false,
+            completed: false,
+            cleanupSent: false,
+            cancelReason: "",
+            hash: extractHash(
+                quality.MagnetLink
+            ),
+            abortController:
+                new AbortController(),
+            cancel: null
+        };
+
+        window.__simpleMovieFeedStartupSession =
+            startupSession;
+
         const oldOverlay =
             document.getElementById(
                 "simpleMovieFeedPreparing"
@@ -1705,10 +1741,32 @@ function getApiClient() {
         details.textContent =
             "Waiting for qBittorrent…";
 
+        const cancelButton =
+            document.createElement("button");
+
+        cancelButton.type = "button";
+        cancelButton.textContent = "Cancel";
+        cancelButton.style.marginTop = "18px";
+        cancelButton.style.padding =
+            "10px 18px";
+        cancelButton.style.border = "0";
+        cancelButton.style.borderRadius =
+            "6px";
+        cancelButton.style.cursor = "pointer";
+        cancelButton.style.fontSize = "1em";
+
+        cancelButton.addEventListener(
+            "click",
+            function () {
+                cancelStartup("user");
+            }
+        );
+
         box.appendChild(title);
         box.appendChild(statusLine);
         box.appendChild(progressOuter);
         box.appendChild(details);
+        box.appendChild(cancelButton);
 
         overlay.appendChild(box);
         document.body.appendChild(overlay);
@@ -1718,6 +1776,127 @@ function getApiClient() {
                 setTimeout(resolve, ms);
             });
         }
+
+        function isStartupCancelled() {
+            return (
+                startupSession.cancelled ||
+                (
+                    window.__simpleMovieFeedStartupSession !==
+                    startupSession
+                )
+            );
+        }
+
+        function throwIfStartupCancelled() {
+            if (!isStartupCancelled()) {
+                return;
+            }
+
+            const cancellationError =
+                new Error(
+                    "Movie startup cancelled."
+                );
+
+            cancellationError.name =
+                "AbortError";
+
+            throw cancellationError;
+        }
+
+        async function cleanupCancelledStartup() {
+            if (
+                startupSession.cleanupSent ||
+                startupSession.completed ||
+                !startupSession.hash ||
+                !currentUserId
+            ) {
+                return;
+            }
+
+            startupSession.cleanupSent = true;
+
+            const cancelUrl =
+                getServerUrl() +
+                API_BASE +
+                "/stream/cancel/" +
+                encodeURIComponent(
+                    startupSession.hash
+                ) +
+                "?userId=" +
+                encodeURIComponent(
+                    currentUserId
+                ) +
+                "&movieId=" +
+                encodeURIComponent(
+                    movie.Id || 0
+                );
+
+            try {
+                const response =
+                    await fetch(
+                        cancelUrl,
+                        {
+                            method: "POST",
+                            headers:
+                                authHeaders(false)
+                        }
+                    );
+
+                if (!response.ok) {
+                    log(
+                        "Cancelled startup cleanup returned HTTP",
+                        response.status
+                    );
+                }
+            }
+            catch (cleanupError) {
+                log(
+                    "Cancelled startup cleanup failed:",
+                    cleanupError
+                );
+            }
+        }
+
+        function cancelStartup(reason) {
+            if (
+                startupSession.cancelled ||
+                startupSession.completed
+            ) {
+                return;
+            }
+
+            startupSession.cancelled = true;
+            startupSession.cancelReason =
+                reason || "cancelled";
+
+            try {
+                startupSession
+                    .abortController
+                    .abort();
+            }
+            catch (_) {
+            }
+
+            if (
+                overlay &&
+                overlay.parentNode
+            ) {
+                overlay.remove();
+            }
+
+            if (
+                window.__simpleMovieFeedStartupSession ===
+                startupSession
+            ) {
+                window.__simpleMovieFeedStartupSession =
+                    null;
+            }
+
+            cleanupCancelledStartup();
+        }
+
+        startupSession.cancel =
+            cancelStartup;
 
         function formatBytesPerSecond(value) {
             value = Number(value) || 0;
@@ -2060,9 +2239,7 @@ function getApiClient() {
             );
         }
         let hash =
-            extractHash(
-                quality.MagnetLink
-            );
+            startupSession.hash;
 
         let libraryPath = null;
         let jellyfinItemId = null;
@@ -2160,6 +2337,8 @@ function getApiClient() {
         }
 
         async function startOrPrepare() {
+            throwIfStartupCancelled();
+
             if (startInFlight) {
                 return;
             }
@@ -2176,20 +2355,18 @@ function getApiClient() {
                         {
                             method: "POST",
 
+                            signal:
+                                startupSession
+                                    .abortController
+                                    .signal,
+
                             headers:
                                 authHeaders(true),
 
                             body:
                                 JSON.stringify({
                                     UserId:
-                                        (
-                                            getApiClient() &&
-                                            getApiClient()
-                                                .getCurrentUserId
-                                        )
-                                            ? getApiClient()
-                                                .getCurrentUserId()
-                                            : "",
+                                        currentUserId,
 
                                     MovieId:
                                         movie.Id || 0,
@@ -2231,6 +2408,8 @@ function getApiClient() {
 
                 if (result.gid) {
                     hash = result.gid;
+                    startupSession.hash =
+                        result.gid;
                 }
 
                 if (result.libraryPath) {
@@ -2286,6 +2465,8 @@ function getApiClient() {
                 Date.now();
 
             while (!playbackStarted) {
+                throwIfStartupCancelled();
+
                 if (startError) {
                     throw startError;
                 }
@@ -2299,6 +2480,17 @@ function getApiClient() {
 
                     statusLine.textContent =
                         "Starting Jellyfin player…";
+
+                    startupSession.completed =
+                        true;
+
+                    if (
+                        window.__simpleMovieFeedStartupSession ===
+                        startupSession
+                    ) {
+                        window.__simpleMovieFeedStartupSession =
+                            null;
+                    }
 
                     await playNative(
                         jellyfinItemId
@@ -2336,6 +2528,11 @@ function getApiClient() {
                             await fetch(
                                 statusUrl,
                                 {
+                                    signal:
+                                        startupSession
+                                            .abortController
+                                            .signal,
+
                                     headers:
                                         authHeaders(false)
                                 }
@@ -2357,6 +2554,8 @@ function getApiClient() {
                         if (response.ok) {
                             const status =
                                 await response.json();
+
+                            throwIfStartupCancelled();
 
                             if (!status.found) {
                                 statusLine.textContent =
@@ -2402,6 +2601,29 @@ function getApiClient() {
                                         "working"
                                     );
 
+                                details.textContent =
+                                    "State: " +
+                                    (
+                                        status.state ||
+                                        "unknown"
+                                    ) +
+                                    " | Peers: " +
+                                    Number(
+                                        status.peers || 0
+                                    ) +
+                                    " | Seeds: " +
+                                    Number(
+                                        status.seeds || 0
+                                    ) +
+                                    " | " +
+                                    formatBytesPerSecond(
+                                        status.downloadSpeed
+                                    ) +
+                                    " | ETA " +
+                                    formatEta(
+                                        status.eta
+                                    );
+
                                 downloadedBytes =
                                     Number(
                                         status.downloaded
@@ -2429,7 +2651,24 @@ function getApiClient() {
                                             ).toFixed(1) +
                                             " / " +
                                             startupBufferMiB +
-                                            " MiB cached";
+                                            " MiB cached" +
+                                            " | State: " +
+                                            (
+                                                status.state ||
+                                                "unknown"
+                                            ) +
+                                            " | Peers: " +
+                                            Number(
+                                                status.peers || 0
+                                            ) +
+                                            " | Seeds: " +
+                                            Number(
+                                                status.seeds || 0
+                                            ) +
+                                            " | " +
+                                            formatBytesPerSecond(
+                                                status.downloadSpeed
+                                            );
                                     }
 
                                     continue;
@@ -2477,6 +2716,15 @@ function getApiClient() {
             }
         }
         catch (err) {
+            if (isStartupCancelled()) {
+                log(
+                    "Movie startup cancelled:",
+                    startupSession.cancelReason
+                );
+
+                return;
+            }
+
             if (
                 overlay &&
                 overlay.parentNode
