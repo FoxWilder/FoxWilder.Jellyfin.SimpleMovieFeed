@@ -1,5 +1,90 @@
 (function () {
     "use strict";
+
+    const configurationControllerScriptId =
+        "SimpleMovieFeedConfigurationControllerScript";
+
+    let configurationControllerPage = null;
+
+    function ensureSimpleMovieFeedConfigurationController() {
+        const page = document.querySelector(
+            "#SimpleMovieFeedConfigurationPage"
+        );
+
+        if (!page) {
+            configurationControllerPage = null;
+            return;
+        }
+
+        if (configurationControllerPage === page) {
+            return;
+        }
+
+        configurationControllerPage = page;
+
+        const previousScript =
+            document.getElementById(
+                configurationControllerScriptId
+            );
+
+        if (previousScript) {
+            previousScript.remove();
+        }
+
+        const script = document.createElement(
+            "script"
+        );
+
+        script.id = configurationControllerScriptId;
+        script.src =
+            "configurationpage?name=SimpleMovieFeed.Configuration.js";
+        script.async = false;
+
+        script.addEventListener(
+            "load",
+            function () {
+                log(
+                    "Configuration controller loaded"
+                );
+            },
+            { once: true }
+        );
+
+        script.addEventListener(
+            "error",
+            function () {
+                error(
+                    "Configuration controller failed to load"
+                );
+
+                if (configurationControllerPage === page) {
+                    configurationControllerPage = null;
+                }
+
+                script.remove();
+            },
+            { once: true }
+        );
+
+        document.head.appendChild(script);
+    }
+
+    function scheduleConfigurationControllerCheck() {
+        window.setTimeout(
+            ensureSimpleMovieFeedConfigurationController,
+            0
+        );
+
+        window.setTimeout(
+            ensureSimpleMovieFeedConfigurationController,
+            250
+        );
+
+        window.setTimeout(
+            ensureSimpleMovieFeedConfigurationController,
+            750
+        );
+    }
     /*
      * Global authentication helper.
      * Needed by the Continue Watching bridge, which runs
@@ -3384,11 +3469,13 @@ function getApiClient() {
     }
 
     syncSimpleMovieFeedNativeCardStyle();
+    scheduleConfigurationControllerCheck();
     start();
 
     window.addEventListener(
         "hashchange",
         function () {
+            scheduleConfigurationControllerCheck();
             setTimeout(
                 function () {
                     render();
@@ -3405,6 +3492,7 @@ function getApiClient() {
     document.addEventListener(
         "viewshow",
         function () {
+            scheduleConfigurationControllerCheck();
             setTimeout(
                 function () {
                     render();
