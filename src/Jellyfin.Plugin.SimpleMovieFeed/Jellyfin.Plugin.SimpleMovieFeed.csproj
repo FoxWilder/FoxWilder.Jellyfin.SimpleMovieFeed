@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -16,6 +16,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Configuration.config.html" />
     <EmbeddedResource Include="SimpleMovieFeed.js" />
+    <EmbeddedResource Include="SimpleMovieFeed.Configuration.js" />
   </ItemGroup>
 
 </Project>

@@ -60,6 +60,12 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             EmbeddedResourcePath =
                 assemblyName + ".SimpleMovieFeed.js"
         };
+        yield return new PluginPageInfo
+        {
+            Name = "SimpleMovieFeed.Configuration.js",
+            EmbeddedResourcePath =
+                assemblyName + ".SimpleMovieFeed.Configuration.js"
+        };
     }
 
     private void InjectWebScript()
