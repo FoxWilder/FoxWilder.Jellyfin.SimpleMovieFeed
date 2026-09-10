@@ -7,6 +7,12 @@ The project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-09-10
+
+### Fixed
+
+- Run the SimpleMovieFeed configuration-page controller from a dedicated embedded JavaScript resource so Jellyfin Web can execute configuration loading and saving logic.
+
 ## [1.2.3] - 2026-09-09
 
 ### Fixed
