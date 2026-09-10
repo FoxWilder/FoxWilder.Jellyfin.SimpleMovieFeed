@@ -6,6 +6,14 @@ All notable changes to SimpleMovieFeed are documented here.
 The project uses Semantic Versioning.
 
 ## [Unreleased]
+
+## [1.2.6] - 2026-09-10
+
+### Fixed
+
+* Cancel pending playback startup work when the initiating playback request is abandoned.
+* Isolate prepared playback state so one playback attempt cannot consume or remove another attempt's startup state.
+* Prevent cleanup from removing a torrent while another active or pending playback startup still uses it.
 ## [1.2.5] - 2026-09-10
 
 ### Fixed
