@@ -12,6 +12,7 @@ public sealed class PlaybackCleanupEntryPoint :
     IDisposable
 {
     private sealed record PendingCleanup(
+        Guid ItemId,
         ActiveMoviePlayback Record,
         CancellationTokenSource Cancellation);
 
@@ -21,9 +22,9 @@ public sealed class PlaybackCleanupEntryPoint :
     private readonly IUserDataManager _userDataManager;
 
     private readonly ConcurrentDictionary<
-        Guid,
+        string,
         PendingCleanup> _pendingCleanup =
-            new();
+            new(StringComparer.OrdinalIgnoreCase);
 
     private CancellationTokenSource?
         _monitorCancellation;
@@ -168,24 +169,87 @@ public sealed class PlaybackCleanupEntryPoint :
                 return;
             }
 
-            if (!_pendingCleanup.TryRemove(
-                    item.Id,
-                    out var pending))
+            var playSessionId =
+                e.PlaySessionId;
+
+            if (string.IsNullOrWhiteSpace(
+                    playSessionId))
             {
                 return;
             }
 
-            pending.Cancellation.Cancel();
+            var userId =
+                e.Users?
+                    .FirstOrDefault()?
+                    .Id
+                ?? Guid.Empty;
 
-            PlaybackStateStore.RestoreActive(
-                item.Id,
-                pending.Record);
+            if (userId == Guid.Empty)
+            {
+                return;
+            }
 
-            pending.Cancellation.Dispose();
+            if (PlaybackStateStore.TryActivatePrepared(
+                    item.Id,
+                    userId,
+                    playSessionId,
+                    out _))
+            {
+                Console.WriteLine(
+                    "SimpleMovieFeed: playback session " +
+                    playSessionId +
+                    " activated for user " +
+                    userId +
+                    ", item " +
+                    item.Id +
+                    ".");
 
-            Console.WriteLine(
-                "SimpleMovieFeed: cleanup cancelled because playback restarted for " +
-                item.Name);
+                return;
+            }
+
+            /*
+             * A Jellyfin playback can restart during the cleanup
+             * grace period without another plugin startup request.
+             * Recover the stopped record, but only for the same
+             * Jellyfin item and user.
+             */
+            foreach (var entry in _pendingCleanup)
+            {
+                var pending = entry.Value;
+
+                if (
+                    pending.ItemId != item.Id ||
+                    pending.Record.UserId != userId)
+                {
+                    continue;
+                }
+
+                if (!_pendingCleanup.TryRemove(
+                        entry.Key,
+                        out var recovered))
+                {
+                    continue;
+                }
+
+                recovered.Cancellation.Cancel();
+
+                PlaybackStateStore.RestoreActive(
+                    playSessionId,
+                    recovered.Record);
+
+                recovered.Cancellation.Dispose();
+
+                Console.WriteLine(
+                    "SimpleMovieFeed: cleanup cancelled because playback restarted for user " +
+                    userId +
+                    ", item " +
+                    item.Id +
+                    ", session " +
+                    playSessionId +
+                    ".");
+
+                return;
+            }
         }
         catch (Exception ex)
         {
@@ -209,7 +273,7 @@ public sealed class PlaybackCleanupEntryPoint :
             }
 
             if (!PlaybackStateStore.TryGetActive(
-                    item.Id,
+                    e.PlaySessionId,
                     out var record))
             {
                 return;
@@ -262,14 +326,20 @@ public sealed class PlaybackCleanupEntryPoint :
                 return;
             }
 
+            var playSessionId =
+                e.PlaySessionId;
+
             if (!PlaybackStateStore.TryTakeActive(
-                    item.Id,
+                    playSessionId,
                     out var record))
             {
                 return;
             }
 
-            if (record is null)
+            if (
+                record is null ||
+                string.IsNullOrWhiteSpace(
+                    playSessionId))
             {
                 return;
             }
@@ -291,7 +361,9 @@ public sealed class PlaybackCleanupEntryPoint :
                 UserDataSaveReason.PlaybackFinished);
 
             Console.WriteLine(
-                "SimpleMovieFeed: playback stopped for " +
+                "SimpleMovieFeed: playback session " +
+                playSessionId +
+                " stopped for " +
                 item.Name +
                 " at " +
                 position +
@@ -302,11 +374,12 @@ public sealed class PlaybackCleanupEntryPoint :
 
             var pending =
                 new PendingCleanup(
+                    item.Id,
                     record,
                     cancellation);
 
             if (_pendingCleanup.TryRemove(
-                    item.Id,
+                    playSessionId,
                     out var previous))
             {
                 previous.Cancellation.Cancel();
@@ -314,7 +387,7 @@ public sealed class PlaybackCleanupEntryPoint :
             }
 
             _pendingCleanup[
-                item.Id] =
+                playSessionId] =
                 pending;
 
             try
@@ -329,7 +402,7 @@ public sealed class PlaybackCleanupEntryPoint :
             }
 
             if (!_pendingCleanup.TryRemove(
-                    item.Id,
+                    playSessionId,
                     out var current))
             {
                 return;
@@ -339,24 +412,37 @@ public sealed class PlaybackCleanupEntryPoint :
                     current,
                     pending))
             {
+                current.Cancellation.Dispose();
                 return;
             }
 
-            /*
-             * Keep the tiny .strm library item.
-             * It is what preserves Jellyfin's native identity and
-             * makes standard Continue Watching possible.
-             *
-             * Only torrent/cache data is deleted.
-             */
             try
             {
+                /*
+                 * The stopped session has already been removed from
+                 * ActiveByPlaySessionId. Re-check all remaining
+                 * pending/prepared/active playback state immediately
+                 * before deleting shared torrent data.
+                 */
+                if (PlaybackStateStore.IsTorrentInUse(
+                        record.TorrentHash))
+                {
+                    Console.WriteLine(
+                        "SimpleMovieFeed: torrent cleanup skipped for session " +
+                        playSessionId +
+                        " because torrent " +
+                        record.TorrentHash +
+                        " is still registered in use.");
+
+                    return;
+                }
+
                 await _qbit.DeleteTorrentAsync(
                     record.TorrentHash,
                     deleteFiles: true);
 
                 Console.WriteLine(
-                    "SimpleMovieFeed: torrent and cache deleted; persistent Jellyfin placeholder retained.");
+                    "SimpleMovieFeed: torrent and cache deleted after final playback session; persistent Jellyfin placeholder retained.");
             }
             catch (Exception ex)
             {
@@ -364,8 +450,10 @@ public sealed class PlaybackCleanupEntryPoint :
                     "SimpleMovieFeed: qBittorrent cleanup failed: " +
                     ex);
             }
-
-            current.Cancellation.Dispose();
+            finally
+            {
+                current.Cancellation.Dispose();
+            }
         }
         catch (Exception ex)
         {
@@ -374,7 +462,6 @@ public sealed class PlaybackCleanupEntryPoint :
                 ex);
         }
     }
-
     private static void CleanupDisposableCache()
     {
         try

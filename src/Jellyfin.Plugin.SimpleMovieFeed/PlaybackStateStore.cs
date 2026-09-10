@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace Jellyfin.Plugin.SimpleMovieFeed;
@@ -27,13 +27,20 @@ public static class PlaybackStateStore
     private static readonly object CatalogLock = new();
 
     private static readonly ConcurrentDictionary<
+        string,
+        ActiveMoviePlayback> ActiveByPlaySessionId =
+            new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly ConcurrentDictionary<
         Guid,
-        ActiveMoviePlayback> ActiveByItemId =
+        ConcurrentDictionary<Guid, ActiveMoviePlayback>>
+        PreparedByItemId =
             new();
 
     private static readonly ConcurrentDictionary<
         string,
-        ActiveMoviePlayback> PendingByLibraryPath =
+        ConcurrentDictionary<Guid, ActiveMoviePlayback>>
+        PendingByLibraryPath =
             new(StringComparer.OrdinalIgnoreCase);
 
     private static Dictionary<string, long> _resume =
@@ -177,9 +184,17 @@ public static class PlaybackStateStore
                 cachePath,
                 libraryPath);
 
-        PendingByLibraryPath[
+        var fullPath =
             Path.GetFullPath(
-                libraryPath)] =
+                libraryPath);
+
+        var pending =
+            PendingByLibraryPath.GetOrAdd(
+                fullPath,
+                _ => new());
+
+        pending[
+            Guid.NewGuid()] =
             record;
     }
 
@@ -188,26 +203,29 @@ public static class PlaybackStateStore
         int movieId,
         string torrentHash)
     {
-        foreach (var entry in PendingByLibraryPath)
+        foreach (var pending in PendingByLibraryPath.Values)
         {
-            var record = entry.Value;
-
-            if (
-                record.UserId != userId ||
-                record.MovieId != movieId ||
-                !string.Equals(
-                    record.TorrentHash,
-                    torrentHash,
-                    StringComparison.OrdinalIgnoreCase))
+            foreach (var entry in pending)
             {
-                continue;
-            }
+                var record = entry.Value;
 
-            if (PendingByLibraryPath.TryRemove(
-                    entry.Key,
-                    out _))
-            {
-                return true;
+                if (
+                    record.UserId != userId ||
+                    record.MovieId != movieId ||
+                    !string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (pending.TryRemove(
+                        entry.Key,
+                        out _))
+                {
+                    return true;
+                }
             }
         }
 
@@ -219,26 +237,29 @@ public static class PlaybackStateStore
         int movieId,
         string torrentHash)
     {
-        foreach (var entry in ActiveByItemId)
+        foreach (var prepared in PreparedByItemId.Values)
         {
-            var record = entry.Value;
-
-            if (
-                record.UserId != userId ||
-                record.MovieId != movieId ||
-                !string.Equals(
-                    record.TorrentHash,
-                    torrentHash,
-                    StringComparison.OrdinalIgnoreCase))
+            foreach (var entry in prepared)
             {
-                continue;
-            }
+                var record = entry.Value;
 
-            if (ActiveByItemId.TryRemove(
-                    entry.Key,
-                    out _))
-            {
-                return true;
+                if (
+                    record.UserId != userId ||
+                    record.MovieId != movieId ||
+                    !string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (prepared.TryRemove(
+                        entry.Key,
+                        out _))
+                {
+                    return true;
+                }
             }
         }
 
@@ -248,18 +269,35 @@ public static class PlaybackStateStore
     public static bool IsTorrentInUse(
         string torrentHash)
     {
-        foreach (var record in PendingByLibraryPath.Values)
+        foreach (var pending in PendingByLibraryPath.Values)
         {
-            if (string.Equals(
-                    record.TorrentHash,
-                    torrentHash,
-                    StringComparison.OrdinalIgnoreCase))
+            foreach (var record in pending.Values)
             {
-                return true;
+                if (string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
             }
         }
 
-        foreach (var record in ActiveByItemId.Values)
+        foreach (var prepared in PreparedByItemId.Values)
+        {
+            foreach (var record in prepared.Values)
+            {
+                if (string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        foreach (var record in ActiveByPlaySessionId.Values)
         {
             if (string.Equals(
                     record.TorrentHash,
@@ -281,37 +319,44 @@ public static class PlaybackStateStore
             Path.GetFullPath(
                 libraryPath);
 
-        if (!PendingByLibraryPath.TryGetValue(
+        if (!PendingByLibraryPath.TryRemove(
                 fullPath,
-                out var record))
+                out var pending))
         {
             return;
         }
 
-        ActiveByItemId[
-            jellyfinItemId] =
-            record;
+        var prepared =
+            PreparedByItemId.GetOrAdd(
+                jellyfinItemId,
+                _ => new());
 
-        PendingByLibraryPath.TryRemove(
-            fullPath,
-            out _);
+        foreach (var entry in pending)
+        {
+            var record = entry.Value;
 
-        RememberMovie(
-            jellyfinItemId,
-            new StoredMovie(
-                record.MovieId,
-                record.MovieTitle,
-                record.Year,
-                record.MagnetLink,
-                record.Quality));
+            prepared[
+                entry.Key] =
+                record;
 
-        Console.WriteLine(
-            "SimpleMovieFeed: attached Jellyfin item " +
-            jellyfinItemId +
-            " to movie " +
-            record.MovieId);
+            RememberMovie(
+                jellyfinItemId,
+                new StoredMovie(
+                    record.MovieId,
+                    record.MovieTitle,
+                    record.Year,
+                    record.MagnetLink,
+                    record.Quality));
+
+            Console.WriteLine(
+                "SimpleMovieFeed: prepared Jellyfin item " +
+                jellyfinItemId +
+                " for user " +
+                record.UserId +
+                ", movie " +
+                record.MovieId);
+        }
     }
-
     public static void RememberMovie(
         Guid jellyfinItemId,
         StoredMovie movie)
@@ -364,12 +409,71 @@ public static class PlaybackStateStore
         movie = null;
         return false;
     }
-    public static bool TryGetActive(
+    public static bool TryActivatePrepared(
         Guid jellyfinItemId,
+        Guid userId,
+        string playSessionId,
         out ActiveMoviePlayback? record)
     {
-        if (ActiveByItemId.TryGetValue(
+        record = null;
+
+        if (
+            userId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(
+                playSessionId))
+        {
+            return false;
+        }
+
+        if (ActiveByPlaySessionId.TryGetValue(
+                playSessionId,
+                out var alreadyActive))
+        {
+            record = alreadyActive;
+            return true;
+        }
+
+        if (!PreparedByItemId.TryGetValue(
                 jellyfinItemId,
+                out var prepared))
+        {
+            return false;
+        }
+
+        foreach (var entry in prepared)
+        {
+            if (entry.Value.UserId != userId)
+            {
+                continue;
+            }
+
+            if (!prepared.TryRemove(
+                    entry.Key,
+                    out var activated))
+            {
+                continue;
+            }
+
+            ActiveByPlaySessionId[
+                playSessionId] =
+                activated;
+
+            record = activated;
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool TryGetActive(
+        string? playSessionId,
+        out ActiveMoviePlayback? record)
+    {
+        if (
+            !string.IsNullOrWhiteSpace(
+                playSessionId) &&
+            ActiveByPlaySessionId.TryGetValue(
+                playSessionId,
                 out var found))
         {
             record = found;
@@ -381,11 +485,14 @@ public static class PlaybackStateStore
     }
 
     public static bool TryTakeActive(
-        Guid jellyfinItemId,
+        string? playSessionId,
         out ActiveMoviePlayback? record)
     {
-        if (ActiveByItemId.TryRemove(
-                jellyfinItemId,
+        if (
+            !string.IsNullOrWhiteSpace(
+                playSessionId) &&
+            ActiveByPlaySessionId.TryRemove(
+                playSessionId,
                 out var found))
         {
             record = found;
@@ -397,14 +504,19 @@ public static class PlaybackStateStore
     }
 
     public static void RestoreActive(
-        Guid jellyfinItemId,
+        string playSessionId,
         ActiveMoviePlayback record)
     {
-        ActiveByItemId[
-            jellyfinItemId] =
+        if (string.IsNullOrWhiteSpace(
+                playSessionId))
+        {
+            return;
+        }
+
+        ActiveByPlaySessionId[
+            playSessionId] =
             record;
     }
-
     public static long GetResumePosition(
         Guid userId,
         int movieId)
