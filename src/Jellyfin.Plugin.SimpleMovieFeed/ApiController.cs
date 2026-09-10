@@ -584,6 +584,20 @@ public sealed class ApiController : ControllerBase
                     ? st.GetString() ?? "unknown"
                     : "unknown";
 
+            var peers =
+                value.TryGetProperty(
+                    "num_leechs",
+                    out var peerProperty)
+                    ? peerProperty.GetInt32()
+                    : 0;
+
+            var seeds =
+                value.TryGetProperty(
+                    "num_seeds",
+                    out var seedProperty)
+                    ? seedProperty.GetInt32()
+                    : 0;
+
             Guid? jellyfinItemId = null;
 
             if (!string.IsNullOrWhiteSpace(libraryPath))
@@ -616,6 +630,8 @@ public sealed class ApiController : ControllerBase
                     downloaded,
                     totalSize,
                     state,
+                    peers,
+                    seeds,
                     jellyfinItemId,
                     ready = jellyfinItemId.HasValue
                 });
@@ -626,6 +642,94 @@ public sealed class ApiController : ControllerBase
                 new { error = ex.Message });
         }
     }
+    [HttpPost("stream/cancel/{hash}")]
+    [Authorize]
+    public async Task<ActionResult<object>> CancelTorrentStream(
+        string hash,
+        [FromQuery] Guid userId,
+        [FromQuery] int movieId,
+        CancellationToken ct = default)
+    {
+        if (
+            string.IsNullOrWhiteSpace(hash) ||
+            userId == Guid.Empty ||
+            movieId <= 0)
+        {
+            return BadRequest(
+                new
+                {
+                    error =
+                        "Torrent hash, user ID, and movie ID are required."
+                });
+        }
+
+        try
+        {
+            var pendingRemoved =
+                PlaybackStateStore.RemovePendingStartup(
+                    userId,
+                    movieId,
+                    hash);
+
+            var preparedRemoved =
+                PlaybackStateStore.RemovePreparedStartup(
+                    userId,
+                    movieId,
+                    hash);
+
+            if (PlaybackStateStore.IsTorrentInUse(hash))
+            {
+                Console.WriteLine(
+                    "SimpleMovieFeed: cancelled startup retained torrent " +
+                    hash +
+                    " because it is still registered in use.");
+
+                return Ok(
+                    new
+                    {
+                        cancelled = true,
+                        pendingRemoved,
+                        preparedRemoved,
+                        torrentRemoved = false,
+                        reason = "in-use"
+                    });
+            }
+
+            await _aria2Service.DeleteTorrentAsync(
+                hash,
+                true,
+                ct);
+
+            Console.WriteLine(
+                "SimpleMovieFeed: cancelled startup removed torrent " +
+                hash +
+                ".");
+
+            return Ok(
+                new
+                {
+                    cancelled = true,
+                    pendingRemoved,
+                    preparedRemoved,
+                    torrentRemoved = true
+                });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                "SimpleMovieFeed: cancelled startup cleanup failed for " +
+                hash +
+                ": " +
+                ex);
+
+            return BadRequest(
+                new
+                {
+                    error = ex.Message
+                });
+        }
+    }
+
     [HttpGet("stream/movie/{movieId:int}")]
     [AllowAnonymous]
     public async Task<IActionResult> StreamPersistentMovie(
