@@ -168,33 +168,38 @@ public sealed class PlaybackCleanupEntryPoint :
     private static string? GetPlaybackCorrelationId(
         PlaybackProgressEventArgs e)
     {
+        var jellyfinSessionId =
+            e.Session?.Id;
+
+        if (!string.IsNullOrWhiteSpace(
+                jellyfinSessionId))
+        {
+            /*
+             * Session.Id is the stable server-side Jellyfin client
+             * session identity across PlaybackStart, Progress and
+             * PlaybackStopped events.
+             *
+             * Jellyfin Web 10.11.11 can expose an empty PlaySessionId
+             * at start and later expose a different non-empty
+             * PlaySessionId at stop. Therefore PlaySessionId cannot
+             * be the primary lifecycle correlation key.
+             */
+            return
+                "jellyfin-session:" +
+                jellyfinSessionId;
+        }
+
+        /*
+         * Retain PlaySessionId only as a fallback for clients/events
+         * where Jellyfin does not provide Session.Id.
+         */
         if (!string.IsNullOrWhiteSpace(
                 e.PlaySessionId))
         {
             return e.PlaySessionId;
         }
 
-        var jellyfinSessionId =
-            e.Session?.Id;
-
-        if (string.IsNullOrWhiteSpace(
-                jellyfinSessionId))
-        {
-            return null;
-        }
-
-        /*
-         * Jellyfin Web 10.11.11 can report playback lifecycle
-         * events with an empty PlaySessionId. Session.Id is still
-         * populated by SessionManager and identifies the Jellyfin
-         * client session, so use it as the fallback lifecycle key.
-         *
-         * Prefix the fallback to avoid any possible collision with
-         * a real PlaySessionId value.
-         */
-        return
-            "jellyfin-session:" +
-            jellyfinSessionId;
+        return null;
     }
 
     private void OnPlaybackStart(
