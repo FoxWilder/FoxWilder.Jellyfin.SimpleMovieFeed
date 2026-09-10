@@ -165,6 +165,38 @@ public sealed class PlaybackCleanupEntryPoint :
         }
     }
 
+    private static string? GetPlaybackCorrelationId(
+        PlaybackProgressEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(
+                e.PlaySessionId))
+        {
+            return e.PlaySessionId;
+        }
+
+        var jellyfinSessionId =
+            e.Session?.Id;
+
+        if (string.IsNullOrWhiteSpace(
+                jellyfinSessionId))
+        {
+            return null;
+        }
+
+        /*
+         * Jellyfin Web 10.11.11 can report playback lifecycle
+         * events with an empty PlaySessionId. Session.Id is still
+         * populated by SessionManager and identifies the Jellyfin
+         * client session, so use it as the fallback lifecycle key.
+         *
+         * Prefix the fallback to avoid any possible collision with
+         * a real PlaySessionId value.
+         */
+        return
+            "jellyfin-session:" +
+            jellyfinSessionId;
+    }
+
     private void OnPlaybackStart(
         object? sender,
         PlaybackProgressEventArgs e)
@@ -179,11 +211,16 @@ public sealed class PlaybackCleanupEntryPoint :
             }
 
             var playSessionId =
-                e.PlaySessionId;
+                GetPlaybackCorrelationId(
+                    e);
 
             if (string.IsNullOrWhiteSpace(
                     playSessionId))
             {
+                _logger.LogWarning(
+                    "SimpleMovieFeed lifecycle: PlaybackStart had neither PlaySessionId nor Jellyfin Session.Id for item {ItemId}.",
+                    item.Id);
+
                 return;
             }
 
@@ -286,8 +323,12 @@ public sealed class PlaybackCleanupEntryPoint :
                 return;
             }
 
+            var playSessionId =
+                GetPlaybackCorrelationId(
+                    e);
+
             if (!PlaybackStateStore.TryGetActive(
-                    e.PlaySessionId,
+                    playSessionId,
                     out var record))
             {
                 return;
@@ -341,7 +382,19 @@ public sealed class PlaybackCleanupEntryPoint :
             }
 
             var playSessionId =
-                e.PlaySessionId;
+                GetPlaybackCorrelationId(
+                    e);
+
+            if (string.IsNullOrWhiteSpace(
+                    playSessionId))
+            {
+                _logger.LogWarning(
+                    "SimpleMovieFeed lifecycle: PlaybackStopped had neither PlaySessionId nor Jellyfin Session.Id for item {ItemId}; position {PositionTicks}. Cleanup cannot be correlated.",
+                    item.Id,
+                    e.PlaybackPositionTicks ?? 0);
+
+                return;
+            }
 
             if (!PlaybackStateStore.TryTakeActive(
                     playSessionId,
@@ -356,10 +409,7 @@ public sealed class PlaybackCleanupEntryPoint :
                 return;
             }
 
-            if (
-                record is null ||
-                string.IsNullOrWhiteSpace(
-                    playSessionId))
+            if (record is null)
             {
                 return;
             }
