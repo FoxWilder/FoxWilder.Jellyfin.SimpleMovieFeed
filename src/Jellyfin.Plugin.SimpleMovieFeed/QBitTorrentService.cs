@@ -1047,16 +1047,93 @@ public sealed class QBitTorrentService
         return full;
     }
 
-    public void DeleteCachedFile(string path)
+    public void DeleteCachedTorrentContent(string path)
     {
-        var safePath = ResolveSafePath(path);
+        var safePath =
+            ResolveSafePath(path);
+
+        var root =
+            Path.GetFullPath(
+                _downloadDirectory)
+            .TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+
+        var relative =
+            Path.GetRelativePath(
+                root,
+                safePath);
+
+        if (
+            string.IsNullOrWhiteSpace(relative) ||
+            Path.IsPathRooted(relative) ||
+            relative.Equals(
+                "..",
+                StringComparison.Ordinal) ||
+            relative.StartsWith(
+                ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal) ||
+            relative.StartsWith(
+                ".." + Path.AltDirectorySeparatorChar,
+                StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException(
+                "Torrent cache path is outside the movie cache.");
+        }
+
+        var separatorIndex =
+            relative.IndexOfAny(
+                new[]
+                {
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar
+                });
+
+        if (separatorIndex < 0)
+        {
+            /*
+             * Single-file torrent directly beneath the cache root.
+             */
+            if (File.Exists(safePath))
+            {
+                File.Delete(safePath);
+            }
+
+            return;
+        }
+
+        /*
+         * Multi-file torrents live beneath their top-level content
+         * directory. Remove that whole directory so sibling files
+         * belonging to the torrent cannot be orphaned.
+         */
+        var topLevelName =
+            relative[..separatorIndex];
+
+        var topLevelPath =
+            Path.Combine(
+                root,
+                topLevelName);
+
+        var safeTopLevelPath =
+            ResolveSafePath(
+                topLevelPath);
+
+        if (Directory.Exists(
+                safeTopLevelPath))
+        {
+            Directory.Delete(
+                safeTopLevelPath,
+                recursive: true);
+
+            return;
+        }
 
         if (File.Exists(safePath))
         {
             File.Delete(safePath);
         }
     }
-
     private static string? ExtractBtih(string magnet)
     {
         const string marker = "urn:btih:";
