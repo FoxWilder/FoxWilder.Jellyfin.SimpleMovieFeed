@@ -129,7 +129,7 @@ public sealed class PlaybackCleanupEntryPoint :
         {
             try
             {
-                await _qbit.PauseCompletedPluginTorrentsAsync(
+                await _qbit.RemoveCompletedPluginTorrentsAsync(
                     cancellationToken);
             }
             catch (OperationCanceledException)
@@ -424,30 +424,47 @@ public sealed class PlaybackCleanupEntryPoint :
                  * pending/prepared/active playback state immediately
                  * before deleting shared torrent data.
                  */
-                if (PlaybackStateStore.IsTorrentInUse(
+                var siblingCleanupExists =
+                    _pendingCleanup.Any(
+                        entry =>
+                            !string.Equals(
+                                entry.Key,
+                                playSessionId,
+                                StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(
+                                entry.Value.Record.TorrentHash,
+                                record.TorrentHash,
+                                StringComparison.OrdinalIgnoreCase));
+
+                if (
+                    siblingCleanupExists ||
+                    PlaybackStateStore.IsTorrentInUse(
                         record.TorrentHash))
                 {
                     Console.WriteLine(
-                        "SimpleMovieFeed: torrent cleanup skipped for session " +
+                        "SimpleMovieFeed: final cleanup deferred for session " +
                         playSessionId +
                         " because torrent " +
                         record.TorrentHash +
-                        " is still registered in use.");
+                        " still has another playback or cleanup consumer.");
 
                     return;
                 }
 
                 await _qbit.DeleteTorrentAsync(
                     record.TorrentHash,
-                    deleteFiles: true);
+                    deleteFiles: false);
+
+                _qbit.DeleteCachedFile(
+                    record.CachePath);
 
                 Console.WriteLine(
-                    "SimpleMovieFeed: torrent and cache deleted after final playback session; persistent Jellyfin placeholder retained.");
+                    "SimpleMovieFeed: final playback consumer ended; qBittorrent registration removed and retained cache deleted; persistent Jellyfin placeholder retained.");
             }
             catch (Exception ex)
             {
                 Console.WriteLine(
-                    "SimpleMovieFeed: qBittorrent cleanup failed: " +
+                    "SimpleMovieFeed: final playback cleanup failed: " +
                     ex);
             }
             finally

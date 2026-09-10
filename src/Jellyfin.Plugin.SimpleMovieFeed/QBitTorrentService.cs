@@ -896,7 +896,7 @@ public sealed class QBitTorrentService
         return false;
     }
 
-    public async Task PauseCompletedPluginTorrentsAsync(
+    public async Task RemoveCompletedPluginTorrentsAsync(
         CancellationToken cancellationToken = default)
     {
         var torrents =
@@ -933,23 +933,6 @@ public sealed class QBitTorrentService
                 continue;
             }
 
-            var state =
-                torrent.TryGetProperty(
-                    "state",
-                    out var stateProperty)
-                    ? stateProperty.GetString() ?? ""
-                    : "";
-
-            if (
-                state.Contains(
-                    "paused",
-                    StringComparison.OrdinalIgnoreCase) ||
-                state.Contains(
-                    "stopped",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
 
             var hash =
                 torrent.TryGetProperty(
@@ -964,12 +947,13 @@ public sealed class QBitTorrentService
                 continue;
             }
 
-            await StopAsync(
+            await DeleteTorrentAsync(
                 hash,
+                deleteFiles: false,
                 cancellationToken);
 
             Console.WriteLine(
-                "SimpleMovieFeed: completed torrent paused to prevent seeding: " +
+                "SimpleMovieFeed: completed plugin torrent removed from qBittorrent; cache retained: " +
                 hash);
         }
     }

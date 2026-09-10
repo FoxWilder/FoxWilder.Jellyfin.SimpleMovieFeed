@@ -162,6 +162,7 @@ public static class PlaybackStateStore
     }
 
     public static void RegisterPending(
+        Guid startupId,
         Guid userId,
         int movieId,
         string movieTitle,
@@ -172,6 +173,13 @@ public static class PlaybackStateStore
         string cachePath,
         string libraryPath)
     {
+        if (startupId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Startup ID is required.",
+                nameof(startupId));
+        }
+
         var record =
             new ActiveMoviePlayback(
                 userId,
@@ -194,73 +202,83 @@ public static class PlaybackStateStore
                 _ => new());
 
         pending[
-            Guid.NewGuid()] =
+            startupId] =
             record;
     }
 
     public static bool RemovePendingStartup(
+        Guid startupId,
         Guid userId,
         int movieId,
         string torrentHash)
     {
+        if (startupId == Guid.Empty)
+        {
+            return false;
+        }
+
         foreach (var pending in PendingByLibraryPath.Values)
         {
-            foreach (var entry in pending)
+            if (!pending.TryGetValue(
+                    startupId,
+                    out var record))
             {
-                var record = entry.Value;
-
-                if (
-                    record.UserId != userId ||
-                    record.MovieId != movieId ||
-                    !string.Equals(
-                        record.TorrentHash,
-                        torrentHash,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (pending.TryRemove(
-                        entry.Key,
-                        out _))
-                {
-                    return true;
-                }
+                continue;
             }
+
+            if (
+                record.UserId != userId ||
+                record.MovieId != movieId ||
+                !string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return pending.TryRemove(
+                startupId,
+                out _);
         }
 
         return false;
     }
 
     public static bool RemovePreparedStartup(
+        Guid startupId,
         Guid userId,
         int movieId,
         string torrentHash)
     {
+        if (startupId == Guid.Empty)
+        {
+            return false;
+        }
+
         foreach (var prepared in PreparedByItemId.Values)
         {
-            foreach (var entry in prepared)
+            if (!prepared.TryGetValue(
+                    startupId,
+                    out var record))
             {
-                var record = entry.Value;
-
-                if (
-                    record.UserId != userId ||
-                    record.MovieId != movieId ||
-                    !string.Equals(
-                        record.TorrentHash,
-                        torrentHash,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (prepared.TryRemove(
-                        entry.Key,
-                        out _))
-                {
-                    return true;
-                }
+                continue;
             }
+
+            if (
+                record.UserId != userId ||
+                record.MovieId != movieId ||
+                !string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return prepared.TryRemove(
+                startupId,
+                out _);
         }
 
         return false;
