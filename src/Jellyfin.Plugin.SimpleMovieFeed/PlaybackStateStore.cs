@@ -4,6 +4,7 @@ using System.Text.Json;
 namespace Jellyfin.Plugin.SimpleMovieFeed;
 
 public sealed record ActiveMoviePlayback(
+    Guid StartupId,
     Guid UserId,
     int MovieId,
     string MovieTitle,
@@ -180,8 +181,38 @@ public static class PlaybackStateStore
                 nameof(startupId));
         }
 
+        /*
+         * /stream/start can be retried after Jellyfin has already
+         * activated this logical browser startup. Do not recreate
+         * pending/prepared state for an exact StartupId that is
+         * already active.
+         */
+        var alreadyActive =
+            ActiveByPlaySessionId.Values
+                .FirstOrDefault(
+                    active =>
+                        active.StartupId == startupId);
+
+        if (alreadyActive is not null)
+        {
+            if (
+                alreadyActive.UserId != userId ||
+                alreadyActive.MovieId != movieId ||
+                !string.Equals(
+                    alreadyActive.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Startup ID is already active for a different playback.");
+            }
+
+            return;
+        }
+
         var record =
             new ActiveMoviePlayback(
+                startupId,
                 userId,
                 movieId,
                 movieTitle,
@@ -200,10 +231,24 @@ public static class PlaybackStateStore
             PendingByLibraryPath.GetOrAdd(
                 fullPath,
                 _ => new());
-
         pending[
             startupId] =
             record;
+
+        /*
+         * Activation may race the registration above. If this exact
+         * startup became active between the first active check and
+         * the pending write, remove only its own duplicate.
+         */
+        if (
+            ActiveByPlaySessionId.Values.Any(
+                active =>
+                    active.StartupId == startupId))
+        {
+            pending.TryRemove(
+                startupId,
+                out _);
+        }
     }
 
     public static bool RemovePendingStartup(
@@ -442,11 +487,30 @@ public static class PlaybackStateStore
         {
             return false;
         }
-
         if (ActiveByPlaySessionId.TryGetValue(
                 playSessionId,
                 out var alreadyActive))
         {
+            /*
+             * A repeated /stream/start may have recreated state for
+             * this same logical startup. Remove only this StartupId;
+             * other clients playing the same user/movie are preserved.
+             */
+            if (PreparedByItemId.TryGetValue(
+                    jellyfinItemId,
+                    out var duplicatePrepared))
+            {
+                duplicatePrepared.TryRemove(
+                    alreadyActive.StartupId,
+                    out _);
+            }
+
+            RemovePendingStartup(
+                alreadyActive.StartupId,
+                alreadyActive.UserId,
+                alreadyActive.MovieId,
+                alreadyActive.TorrentHash);
+
             record = alreadyActive;
             return true;
         }
@@ -475,6 +539,17 @@ public static class PlaybackStateStore
             ActiveByPlaySessionId[
                 playSessionId] =
                 activated;
+
+            /*
+             * Registration can race activation. Remove an exact
+             * pending duplicate belonging to the StartupId that was
+             * just activated.
+             */
+            RemovePendingStartup(
+                activated.StartupId,
+                activated.UserId,
+                activated.MovieId,
+                activated.TorrentHash);
 
             record = activated;
             return true;
