@@ -241,9 +241,9 @@ jobs:
           @(
               '## SimpleMovieFeed release candidate'
               ''
-              "- Version: `${{ steps.candidate.outputs.version }}`"
-              "- Exact commit: `${{ steps.candidate.outputs.sha }}`"
-              "- ZIP: `${{ steps.package.outputs.zip_name }}`"
-              "- SHA256: `${{ steps.package.outputs.sha256 }}`"
+              '- Version: ${{ steps.candidate.outputs.version }}'
+              '- Exact commit: ${{ steps.candidate.outputs.sha }}'
+              '- ZIP: ${{ steps.package.outputs.zip_name }}'
+              '- SHA256: ${{ steps.package.outputs.sha256 }}'
               '- Purpose: deployed acceptance testing before stable release'
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
