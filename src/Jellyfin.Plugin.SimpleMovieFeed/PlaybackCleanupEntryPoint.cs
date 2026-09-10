@@ -480,8 +480,80 @@ public sealed class PlaybackCleanupEntryPoint :
                             ex.Message);
                     }
 
-                    _qbit.DeleteCachedTorrentContent(
-                        record.CachePath);
+                    Exception? cacheDeleteFailure = null;
+
+                    for (
+                        var attempt = 1;
+                        attempt <= 12;
+                        attempt++)
+                    {
+                        /*
+                         * A transcoder or HTTP response can briefly retain a
+                         * Windows file handle after Jellyfin reports playback
+                         * stopped. Re-check shared usage before every retry so
+                         * a newly-started consumer is never cleaned up.
+                         */
+                        var retrySiblingCleanupExists =
+                            _pendingCleanup.Any(
+                                entry =>
+                                    string.Equals(
+                                        entry.Value.Record.TorrentHash,
+                                        record.TorrentHash,
+                                        StringComparison.OrdinalIgnoreCase));
+
+                        if (
+                            retrySiblingCleanupExists ||
+                            PlaybackStateStore.IsTorrentInUse(
+                                record.TorrentHash))
+                        {
+                            Console.WriteLine(
+                                "SimpleMovieFeed: retained-cache cleanup deferred during retry for session " +
+                                playSessionId +
+                                " because torrent " +
+                                record.TorrentHash +
+                                " gained another playback or cleanup consumer.");
+
+                            return;
+                        }
+
+                        try
+                        {
+                            _qbit.DeleteCachedTorrentContent(
+                                record.CachePath);
+
+                            cacheDeleteFailure = null;
+                            break;
+                        }
+                        catch (IOException ex)
+                        {
+                            cacheDeleteFailure = ex;
+                        }
+                        catch (UnauthorizedAccessException ex)
+                        {
+                            cacheDeleteFailure = ex;
+                        }
+
+                        if (attempt < 12)
+                        {
+                            Console.WriteLine(
+                                "SimpleMovieFeed: retained-cache deletion attempt " +
+                                attempt +
+                                " failed for torrent " +
+                                record.TorrentHash +
+                                "; retrying after transient file-handle delay: " +
+                                cacheDeleteFailure.Message);
+
+                            await Task.Delay(
+                                TimeSpan.FromSeconds(5));
+                        }
+                    }
+
+                    if (cacheDeleteFailure is not null)
+                    {
+                        throw new IOException(
+                            "Retained torrent cache could not be deleted after bounded retries.",
+                            cacheDeleteFailure);
+                    }
 
                     Console.WriteLine(
                         "SimpleMovieFeed: final playback consumer ended; retained torrent cache deleted; persistent Jellyfin placeholder retained.");
