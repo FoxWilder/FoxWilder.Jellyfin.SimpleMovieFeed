@@ -7,6 +7,15 @@ The project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-09-10
+
+### Fixed
+
+- Track active playback by Jellyfin play session so concurrent playback of the same item does not overwrite another session's state.
+- Preserve separate prepared startup records for concurrent users and promote the matching record when playback starts.
+- Prevent one playback session from deleting torrent data while another session still uses the same torrent.
+- Keep playback progress, resume updates, Continue Watching state, and watch history scoped to the correct Jellyfin user/session.
+
 ## [1.2.6] - 2026-09-10
 
 ### Fixed
