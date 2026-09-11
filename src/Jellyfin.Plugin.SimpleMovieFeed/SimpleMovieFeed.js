@@ -1767,6 +1767,8 @@ function getApiClient() {
         details.textContent =
             "Waiting for qBittorrent…";
 
+            details.style.whiteSpace = "pre-line";
+
         const activityLine =
             document.createElement("div");
 
