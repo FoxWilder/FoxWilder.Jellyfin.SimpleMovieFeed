@@ -1,2 +1,8 @@
-﻿blank_issues_enabled: false
-contact_links: []
+blank_issues_enabled: false
+contact_links:
+  - name: Usage, configuration and support questions
+    url: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/discussions
+    about: Ask for installation, configuration, troubleshooting or general project help in GitHub Discussions.
+  - name: Security-sensitive reports
+    url: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/security/policy
+    about: Do not post vulnerabilities, credentials or authentication material in a public issue. Follow the security policy instead.
