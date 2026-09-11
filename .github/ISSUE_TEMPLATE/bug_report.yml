@@ -1,5 +1,5 @@
-﻿name: Bug report
-description: Report a reproducible problem with SimpleMovieFeed
+name: Bug report
+description: Report a reproducible problem or regression with SimpleMovieFeed
 title: "[Bug]: "
 labels:
   - bug
@@ -7,12 +7,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a problem. Remove all tokens, API keys and private information from logs.
+        Thanks for reporting a problem. Before posting, remove or redact all credentials and private information from logs, screenshots and console output. If a secret may have been exposed, rotate or revoke it.
   - type: input
     id: plugin-version
     attributes:
       label: SimpleMovieFeed version
-      placeholder: v1.0.0
+      description: Use the installed release or release-candidate version.
+      placeholder: v1.2.8
     validations:
       required: true
   - type: input
@@ -26,37 +27,82 @@ body:
     id: qbittorrent-version
     attributes:
       label: qBittorrent version
-      placeholder: 5.2.3
-  - type: textarea
-    id: problem
+      description: Required when the problem involves downloading, playback transport or cleanup.
+      placeholder: 5.2.x
+  - type: input
+    id: operating-system
     attributes:
-      label: Problem
-      description: What happened?
+      label: Operating system
+      placeholder: Windows 11 24H2
     validations:
       required: true
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Is this a regression?
+      description: Choose Yes if the same workflow worked in an earlier SimpleMovieFeed version.
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+  - type: input
+    id: last-working-version
+    attributes:
+      label: Last known working SimpleMovieFeed version
+      description: Complete this when reporting a regression, if known.
+      placeholder: v1.2.7
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Provide the smallest reproducible sequence.
+      description: Provide the smallest clear sequence that reproduces the problem.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected behaviour
+      label: Expected behavior
+      description: What should have happened?
     validations:
       required: true
   - type: textarea
-    id: logs
+    id: actual
     attributes:
-      label: Relevant logs
-      description: Redact all credentials, tokens, API keys and private information.
+      label: Actual behavior
+      description: What happened instead? Include exact error text when useful.
+    validations:
+      required: true
+  - type: textarea
+    id: jellyfin-logs
+    attributes:
+      label: Relevant Jellyfin logs
+      description: Paste only the relevant excerpt. Remove tokens, API keys, passwords, cookies, authorization headers, unnecessary private server addresses, and personally identifying paths or information.
       render: shell
+  - type: textarea
+    id: browser-console
+    attributes:
+      label: Relevant browser console output
+      description: For Jellyfin Web issues, include the relevant browser console excerpt after removing secrets and private information.
+      render: shell
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add screenshots or other context only when they materially help explain the problem. Redact private information first.
   - type: checkboxes
     id: checks
     attributes:
-      label: Safety check
+      label: Safety checks
       options:
-        - label: I have removed credentials and private information from this report.
+        - label: I have removed Jellyfin tokens, API keys, passwords, cookies, authorization headers and other credentials from this report.
+          required: true
+        - label: I have removed unnecessary private server addresses and personally identifying information from logs and screenshots.
+          required: true
+        - label: This report does not contain a security vulnerability that should be reported privately under SECURITY.md.
           required: true
