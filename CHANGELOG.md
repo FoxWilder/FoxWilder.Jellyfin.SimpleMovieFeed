@@ -7,6 +7,27 @@ The project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.2.8] - 2026-09-11
+
+### Added
+
+- Add a GitHub-built release-candidate workflow so exact candidate artifacts can be deployed and accepted before a stable release is published.
+- Add playback lifecycle diagnostics for startup activation, stop correlation, deferred cleanup, and final cleanup.
+
+### Changed
+
+- Remove completed plugin-managed torrents from qBittorrent without deleting retained playback files.
+- Retain only plugin-validated completed cache entries and allow later playback to reuse the exact retained file after qBittorrent registration has been removed.
+- Prefer Jellyfin session identity for playback correlation, with play-session identity used only as a fallback.
+- Serialize final torrent/cache cleanup, re-check active usage before deletion, and retry transient file-deletion failures.
+
+### Fixed
+
+- Prevent final cleanup from deleting or orphaning cache data while another playback/startup consumer still uses the same torrent.
+- Prevent same-user/same-media startup cancellation from removing a separate active or prepared startup.
+- Restore playback startup from validated completed cache after the corresponding completed torrent has already been removed from qBittorrent.
+- Ensure retained cache is removed after the final playback consumer ends and the cleanup grace period expires.
+
 ## [1.2.7] - 2026-09-10
 
 ### Fixed
@@ -105,6 +126,7 @@ The project uses Semantic Versioning.
 - Startup cleanup of disposable SimpleMovieFeed data.
 - Consistent Jellyfin Web card and section presentation.
 
+[1.2.8]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.8
 [1.2.2]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.2
 [1.2.1]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.1
 [1.2.0]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.0
