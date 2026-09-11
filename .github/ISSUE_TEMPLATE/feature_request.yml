@@ -1,24 +1,41 @@
-﻿name: Feature request
+name: Feature request
 description: Suggest an improvement to SimpleMovieFeed
 title: "[Feature]: "
 labels:
   - enhancement
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a new capability or behavior change. For usage or configuration questions, please use GitHub Discussions instead.
   - type: textarea
     id: problem
     attributes:
       label: Problem or use case
-      description: What would you like to accomplish?
+      description: What are you trying to accomplish, and what currently makes that difficult?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed behaviour
-      description: Describe how you would like the feature to work.
+      label: Proposed behavior
+      description: Describe how you would like the feature to work from a user's perspective.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
       label: Alternatives considered
+      description: Describe any workaround or alternative approach you already considered.
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add examples or screenshots when useful. Remove credentials and private information before posting.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I have removed credentials and unnecessary private information from this request.
+          required: true

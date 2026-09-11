@@ -1,0 +1,42 @@
+name: Documentation report
+description: Report missing, incorrect or confusing documentation
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for README, installation, configuration, contributing, security, changelog, or other repository documentation problems.
+  - type: input
+    id: location
+    attributes:
+      label: Documentation location
+      description: Link the page, file, heading or section that needs improvement.
+      placeholder: docs/INSTALLATION.md — Updating
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is unclear, missing or incorrect?
+      description: Explain what a reader may misunderstand or be unable to complete.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: If you have a proposed correction or clearer wording, describe it here.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add links or screenshots when useful. Remove credentials and unnecessary private information first.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I have removed credentials and unnecessary private information from this report.
+          required: true
