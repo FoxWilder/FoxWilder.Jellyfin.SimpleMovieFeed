@@ -7,6 +7,22 @@ The project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.2.9] - 2026-09-11
+
+### Added
+
+- Add detailed contribution guidance plus structured bug, feature, documentation, and pull-request templates for clearer reporting and review.
+- Add live stalled-startup activity timing so the overlay visibly confirms that qBittorrent status checks are still running.
+
+### Changed
+
+- Show qBittorrent torrent state, peers, seeds, download speed, and ETA during stalled startup instead of leaving the startup overlay effectively static.
+- Show a clear waiting-for-peers explanation separately from the underlying qBittorrent status details.
+
+### Fixed
+
+- Return stalled startup control to the browser status-polling path promptly when torrent file metadata is not yet available, allowing no-peer and metadata-wait states to remain observable and cancellable without a browser refresh.
+
 ## [1.2.8] - 2026-09-11
 
 ### Added
@@ -126,6 +142,7 @@ The project uses Semantic Versioning.
 - Startup cleanup of disposable SimpleMovieFeed data.
 - Consistent Jellyfin Web card and section presentation.
 
+[1.2.9]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.9
 [1.2.8]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.8
 [1.2.2]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.2
 [1.2.1]: https://github.com/FoxWilder/FoxWilder.Jellyfin.SimpleMovieFeed/releases/tag/v1.2.1
