@@ -4,6 +4,7 @@ using System.Text.Json;
 namespace Jellyfin.Plugin.SimpleMovieFeed;
 
 public sealed record ActiveMoviePlayback(
+    Guid StartupId,
     Guid UserId,
     int MovieId,
     string MovieTitle,
@@ -20,6 +21,13 @@ public sealed record StoredMovie(
     int Year,
     string MagnetLink,
     string Quality);
+
+public sealed record RetainedCompletedCache(
+    int MovieId,
+    string MagnetLink,
+    string TorrentHash,
+    string CachePath,
+    long FileSize);
 
 public static class PlaybackStateStore
 {
@@ -41,6 +49,12 @@ public static class PlaybackStateStore
         string,
         ConcurrentDictionary<Guid, ActiveMoviePlayback>>
         PendingByLibraryPath =
+            new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly ConcurrentDictionary<
+        string,
+        RetainedCompletedCache>
+        RetainedCompletedByTorrentHash =
             new(StringComparer.OrdinalIgnoreCase);
 
     private static Dictionary<string, long> _resume =
@@ -162,6 +176,7 @@ public static class PlaybackStateStore
     }
 
     public static void RegisterPending(
+        Guid startupId,
         Guid userId,
         int movieId,
         string movieTitle,
@@ -172,8 +187,45 @@ public static class PlaybackStateStore
         string cachePath,
         string libraryPath)
     {
+        if (startupId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Startup ID is required.",
+                nameof(startupId));
+        }
+
+        /*
+         * /stream/start can be retried after Jellyfin has already
+         * activated this logical browser startup. Do not recreate
+         * pending/prepared state for an exact StartupId that is
+         * already active.
+         */
+        var alreadyActive =
+            ActiveByPlaySessionId.Values
+                .FirstOrDefault(
+                    active =>
+                        active.StartupId == startupId);
+
+        if (alreadyActive is not null)
+        {
+            if (
+                alreadyActive.UserId != userId ||
+                alreadyActive.MovieId != movieId ||
+                !string.Equals(
+                    alreadyActive.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Startup ID is already active for a different playback.");
+            }
+
+            return;
+        }
+
         var record =
             new ActiveMoviePlayback(
+                startupId,
                 userId,
                 movieId,
                 movieTitle,
@@ -192,75 +244,99 @@ public static class PlaybackStateStore
             PendingByLibraryPath.GetOrAdd(
                 fullPath,
                 _ => new());
-
         pending[
-            Guid.NewGuid()] =
+            startupId] =
             record;
+
+        /*
+         * Activation may race the registration above. If this exact
+         * startup became active between the first active check and
+         * the pending write, remove only its own duplicate.
+         */
+        if (
+            ActiveByPlaySessionId.Values.Any(
+                active =>
+                    active.StartupId == startupId))
+        {
+            pending.TryRemove(
+                startupId,
+                out _);
+        }
     }
 
     public static bool RemovePendingStartup(
+        Guid startupId,
         Guid userId,
         int movieId,
         string torrentHash)
     {
+        if (startupId == Guid.Empty)
+        {
+            return false;
+        }
+
         foreach (var pending in PendingByLibraryPath.Values)
         {
-            foreach (var entry in pending)
+            if (!pending.TryGetValue(
+                    startupId,
+                    out var record))
             {
-                var record = entry.Value;
-
-                if (
-                    record.UserId != userId ||
-                    record.MovieId != movieId ||
-                    !string.Equals(
-                        record.TorrentHash,
-                        torrentHash,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (pending.TryRemove(
-                        entry.Key,
-                        out _))
-                {
-                    return true;
-                }
+                continue;
             }
+
+            if (
+                record.UserId != userId ||
+                record.MovieId != movieId ||
+                !string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return pending.TryRemove(
+                startupId,
+                out _);
         }
 
         return false;
     }
 
     public static bool RemovePreparedStartup(
+        Guid startupId,
         Guid userId,
         int movieId,
         string torrentHash)
     {
+        if (startupId == Guid.Empty)
+        {
+            return false;
+        }
+
         foreach (var prepared in PreparedByItemId.Values)
         {
-            foreach (var entry in prepared)
+            if (!prepared.TryGetValue(
+                    startupId,
+                    out var record))
             {
-                var record = entry.Value;
-
-                if (
-                    record.UserId != userId ||
-                    record.MovieId != movieId ||
-                    !string.Equals(
-                        record.TorrentHash,
-                        torrentHash,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (prepared.TryRemove(
-                        entry.Key,
-                        out _))
-                {
-                    return true;
-                }
+                continue;
             }
+
+            if (
+                record.UserId != userId ||
+                record.MovieId != movieId ||
+                !string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return prepared.TryRemove(
+                startupId,
+                out _);
         }
 
         return false;
@@ -311,6 +387,222 @@ public static class PlaybackStateStore
         return false;
     }
 
+    private static ActiveMoviePlayback? FindPlaybackByTorrentHash(
+        string torrentHash)
+    {
+        foreach (var record in ActiveByPlaySessionId.Values)
+        {
+            if (string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return record;
+            }
+        }
+
+        foreach (var prepared in PreparedByItemId.Values)
+        {
+            foreach (var record in prepared.Values)
+            {
+                if (string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return record;
+                }
+            }
+        }
+
+        foreach (var pending in PendingByLibraryPath.Values)
+        {
+            foreach (var record in pending.Values)
+            {
+                if (string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return record;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public static bool MarkRetainedCompletedCache(
+        string torrentHash)
+    {
+        if (string.IsNullOrWhiteSpace(torrentHash))
+        {
+            return false;
+        }
+
+        var playback =
+            FindPlaybackByTorrentHash(
+                torrentHash);
+
+        if (playback is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var fullPath =
+                Path.GetFullPath(
+                    playback.CachePath);
+
+            if (!File.Exists(fullPath))
+            {
+                return false;
+            }
+
+            var fileSize =
+                new FileInfo(fullPath).Length;
+
+            if (fileSize <= 0)
+            {
+                return false;
+            }
+
+            RetainedCompletedByTorrentHash[
+                torrentHash] =
+                new RetainedCompletedCache(
+                    playback.MovieId,
+                    playback.MagnetLink,
+                    torrentHash,
+                    fullPath,
+                    fileSize);
+
+            Console.WriteLine(
+                "SimpleMovieFeed: verified completed cache retained for torrent " +
+                torrentHash +
+                ".");
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool TryGetRetainedCompletedCache(
+        string torrentHash,
+        out RetainedCompletedCache? cache)
+    {
+        cache = null;
+
+        if (string.IsNullOrWhiteSpace(torrentHash))
+        {
+            return false;
+        }
+
+        if (!RetainedCompletedByTorrentHash.TryGetValue(
+                torrentHash,
+                out var retained))
+        {
+            return false;
+        }
+
+        try
+        {
+            var fullPath =
+                Path.GetFullPath(
+                    retained.CachePath);
+
+            if (!File.Exists(fullPath))
+            {
+                RetainedCompletedByTorrentHash.TryRemove(
+                    torrentHash,
+                    out _);
+
+                return false;
+            }
+
+            var currentSize =
+                new FileInfo(fullPath).Length;
+
+            if (
+                currentSize <= 0 ||
+                currentSize != retained.FileSize)
+            {
+                RetainedCompletedByTorrentHash.TryRemove(
+                    torrentHash,
+                    out _);
+
+                return false;
+            }
+
+            cache =
+                retained with
+                {
+                    CachePath = fullPath
+                };
+
+            return true;
+        }
+        catch
+        {
+            RetainedCompletedByTorrentHash.TryRemove(
+                torrentHash,
+                out _);
+
+            return false;
+        }
+    }
+
+    public static void ClearRetainedCompletedCacheForPath(
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        string fullPath;
+
+        try
+        {
+            fullPath =
+                Path.GetFullPath(path);
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var entry in RetainedCompletedByTorrentHash)
+        {
+            string retainedPath;
+
+            try
+            {
+                retainedPath =
+                    Path.GetFullPath(
+                        entry.Value.CachePath);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!string.Equals(
+                    retainedPath,
+                    fullPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            RetainedCompletedByTorrentHash.TryRemove(
+                entry.Key,
+                out _);
+        }
+    }
     public static void AttachItem(
         Guid jellyfinItemId,
         string libraryPath)
@@ -424,11 +716,30 @@ public static class PlaybackStateStore
         {
             return false;
         }
-
         if (ActiveByPlaySessionId.TryGetValue(
                 playSessionId,
                 out var alreadyActive))
         {
+            /*
+             * A repeated /stream/start may have recreated state for
+             * this same logical startup. Remove only this StartupId;
+             * other clients playing the same user/movie are preserved.
+             */
+            if (PreparedByItemId.TryGetValue(
+                    jellyfinItemId,
+                    out var duplicatePrepared))
+            {
+                duplicatePrepared.TryRemove(
+                    alreadyActive.StartupId,
+                    out _);
+            }
+
+            RemovePendingStartup(
+                alreadyActive.StartupId,
+                alreadyActive.UserId,
+                alreadyActive.MovieId,
+                alreadyActive.TorrentHash);
+
             record = alreadyActive;
             return true;
         }
@@ -457,6 +768,17 @@ public static class PlaybackStateStore
             ActiveByPlaySessionId[
                 playSessionId] =
                 activated;
+
+            /*
+             * Registration can race activation. Remove an exact
+             * pending duplicate belonging to the StartupId that was
+             * just activated.
+             */
+            RemovePendingStartup(
+                activated.StartupId,
+                activated.UserId,
+                activated.MovieId,
+                activated.TorrentHash);
 
             record = activated;
             return true;

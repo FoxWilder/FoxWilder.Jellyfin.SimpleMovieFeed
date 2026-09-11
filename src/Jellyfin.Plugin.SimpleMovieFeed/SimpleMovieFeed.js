@@ -776,7 +776,7 @@ function getApiClient() {
         section.style.boxSizing = "border-box";
     }
 
-    
+
 
     function syncSimpleMovieFeedDetailsCardStyle(
         section,
@@ -1637,6 +1637,32 @@ function getApiClient() {
                 : "";
 
         const startupSession = {
+            id:
+                (
+                    window.crypto &&
+                    typeof window.crypto.randomUUID ===
+                        "function"
+                )
+                    ? window.crypto.randomUUID()
+                    : (
+                        "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
+                    ).replace(
+                        /[xy]/g,
+                        function (character) {
+                            const random =
+                                Math.random() * 16 | 0;
+
+                            const value =
+                                character === "x"
+                                    ? random
+                                    : (
+                                        random & 0x3 |
+                                        0x8
+                                    );
+
+                            return value.toString(16);
+                        }
+                    ),
             cancelled: false,
             completed: false,
             cleanupSent: false,
@@ -1829,6 +1855,10 @@ function getApiClient() {
                 "&movieId=" +
                 encodeURIComponent(
                     movie.Id || 0
+                ) +
+                "&startupId=" +
+                encodeURIComponent(
+                    startupSession.id
                 );
 
             try {
@@ -2367,6 +2397,10 @@ function getApiClient() {
                                 JSON.stringify({
                                     UserId:
                                         currentUserId,
+
+
+                                    StartupId:
+                                        startupSession.id,
 
                                     MovieId:
                                         movie.Id || 0,

@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SimpleMovieFeed;
 
@@ -20,10 +21,16 @@ public sealed class PlaybackCleanupEntryPoint :
     private readonly QBitTorrentService _qbit;
     private readonly IUserManager _userManager;
     private readonly IUserDataManager _userDataManager;
+    private readonly ILogger<PlaybackCleanupEntryPoint> _logger;
 
     private readonly ConcurrentDictionary<
         string,
         PendingCleanup> _pendingCleanup =
+            new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly ConcurrentDictionary<
+        string,
+        SemaphoreSlim> _cleanupLocks =
             new(StringComparer.OrdinalIgnoreCase);
 
     private CancellationTokenSource?
@@ -36,7 +43,8 @@ public sealed class PlaybackCleanupEntryPoint :
         ISessionManager sessionManager,
         QBitTorrentService qbit,
         IUserManager userManager,
-        IUserDataManager userDataManager)
+        IUserDataManager userDataManager,
+        ILogger<PlaybackCleanupEntryPoint> logger)
     {
         _sessionManager =
             sessionManager;
@@ -45,6 +53,7 @@ public sealed class PlaybackCleanupEntryPoint :
             qbit;
         _userManager = userManager;
         _userDataManager = userDataManager;
+        _logger = logger;
     }
 
     public async Task StartAsync(
@@ -129,7 +138,7 @@ public sealed class PlaybackCleanupEntryPoint :
         {
             try
             {
-                await _qbit.PauseCompletedPluginTorrentsAsync(
+                await _qbit.RemoveCompletedPluginTorrentsAsync(
                     cancellationToken);
             }
             catch (OperationCanceledException)
@@ -156,6 +165,43 @@ public sealed class PlaybackCleanupEntryPoint :
         }
     }
 
+    private static string? GetPlaybackCorrelationId(
+        PlaybackProgressEventArgs e)
+    {
+        var jellyfinSessionId =
+            e.Session?.Id;
+
+        if (!string.IsNullOrWhiteSpace(
+                jellyfinSessionId))
+        {
+            /*
+             * Session.Id is the stable server-side Jellyfin client
+             * session identity across PlaybackStart, Progress and
+             * PlaybackStopped events.
+             *
+             * Jellyfin Web 10.11.11 can expose an empty PlaySessionId
+             * at start and later expose a different non-empty
+             * PlaySessionId at stop. Therefore PlaySessionId cannot
+             * be the primary lifecycle correlation key.
+             */
+            return
+                "jellyfin-session:" +
+                jellyfinSessionId;
+        }
+
+        /*
+         * Retain PlaySessionId only as a fallback for clients/events
+         * where Jellyfin does not provide Session.Id.
+         */
+        if (!string.IsNullOrWhiteSpace(
+                e.PlaySessionId))
+        {
+            return e.PlaySessionId;
+        }
+
+        return null;
+    }
+
     private void OnPlaybackStart(
         object? sender,
         PlaybackProgressEventArgs e)
@@ -170,11 +216,16 @@ public sealed class PlaybackCleanupEntryPoint :
             }
 
             var playSessionId =
-                e.PlaySessionId;
+                GetPlaybackCorrelationId(
+                    e);
 
             if (string.IsNullOrWhiteSpace(
                     playSessionId))
             {
+                _logger.LogWarning(
+                    "SimpleMovieFeed lifecycle: PlaybackStart had neither PlaySessionId nor Jellyfin Session.Id for item {ItemId}.",
+                    item.Id);
+
                 return;
             }
 
@@ -193,19 +244,24 @@ public sealed class PlaybackCleanupEntryPoint :
                     item.Id,
                     userId,
                     playSessionId,
-                    out _))
+                    out var activatedRecord))
             {
-                Console.WriteLine(
-                    "SimpleMovieFeed: playback session " +
-                    playSessionId +
-                    " activated for user " +
-                    userId +
-                    ", item " +
-                    item.Id +
-                    ".");
+                _logger.LogInformation(
+                    "SimpleMovieFeed lifecycle: activated playback session {PlaySessionId}; startup {StartupId}; user {UserId}; item {ItemId}; torrent {TorrentHash}.",
+                    playSessionId,
+                    activatedRecord?.StartupId,
+                    userId,
+                    item.Id,
+                    activatedRecord?.TorrentHash);
 
                 return;
             }
+
+            _logger.LogWarning(
+                "SimpleMovieFeed lifecycle: PlaybackStart could not activate prepared state for session {PlaySessionId}; user {UserId}; item {ItemId}.",
+                playSessionId,
+                userId,
+                item.Id);
 
             /*
              * A Jellyfin playback can restart during the cleanup
@@ -272,8 +328,12 @@ public sealed class PlaybackCleanupEntryPoint :
                 return;
             }
 
+            var playSessionId =
+                GetPlaybackCorrelationId(
+                    e);
+
             if (!PlaybackStateStore.TryGetActive(
-                    e.PlaySessionId,
+                    playSessionId,
                     out var record))
             {
                 return;
@@ -327,19 +387,34 @@ public sealed class PlaybackCleanupEntryPoint :
             }
 
             var playSessionId =
-                e.PlaySessionId;
+                GetPlaybackCorrelationId(
+                    e);
+
+            if (string.IsNullOrWhiteSpace(
+                    playSessionId))
+            {
+                _logger.LogWarning(
+                    "SimpleMovieFeed lifecycle: PlaybackStopped had neither PlaySessionId nor Jellyfin Session.Id for item {ItemId}; position {PositionTicks}. Cleanup cannot be correlated.",
+                    item.Id,
+                    e.PlaybackPositionTicks ?? 0);
+
+                return;
+            }
 
             if (!PlaybackStateStore.TryTakeActive(
                     playSessionId,
                     out var record))
             {
+                _logger.LogWarning(
+                    "SimpleMovieFeed lifecycle: PlaybackStopped for session {PlaySessionId}; item {ItemId}; position {PositionTicks} had no active playback record. Cleanup cannot be scheduled from this stop event.",
+                    playSessionId,
+                    item.Id,
+                    e.PlaybackPositionTicks ?? 0);
+
                 return;
             }
 
-            if (
-                record is null ||
-                string.IsNullOrWhiteSpace(
-                    playSessionId))
+            if (record is null)
             {
                 return;
             }
@@ -360,14 +435,14 @@ public sealed class PlaybackCleanupEntryPoint :
                 e.PlayedToCompletion,
                 UserDataSaveReason.PlaybackFinished);
 
-            Console.WriteLine(
-                "SimpleMovieFeed: playback session " +
-                playSessionId +
-                " stopped for " +
-                item.Name +
-                " at " +
-                position +
-                " ticks. Torrent cleanup scheduled.");
+            _logger.LogInformation(
+                "SimpleMovieFeed lifecycle: playback session {PlaySessionId}; startup {StartupId}; user {UserId}; item {ItemId}; torrent {TorrentHash} stopped at {PositionTicks} ticks. Cleanup scheduled.",
+                playSessionId,
+                record.StartupId,
+                record.UserId,
+                item.Id,
+                record.TorrentHash,
+                position);
 
             var cancellation =
                 new CancellationTokenSource();
@@ -418,37 +493,163 @@ public sealed class PlaybackCleanupEntryPoint :
 
             try
             {
-                /*
-                 * The stopped session has already been removed from
-                 * ActiveByPlaySessionId. Re-check all remaining
-                 * pending/prepared/active playback state immediately
-                 * before deleting shared torrent data.
-                 */
-                if (PlaybackStateStore.IsTorrentInUse(
-                        record.TorrentHash))
+                var cleanupLock =
+                    _cleanupLocks.GetOrAdd(
+                        record.TorrentHash,
+                        _ => new SemaphoreSlim(1, 1));
+
+                await cleanupLock.WaitAsync();
+
+                try
                 {
-                    Console.WriteLine(
-                        "SimpleMovieFeed: torrent cleanup skipped for session " +
-                        playSessionId +
-                        " because torrent " +
-                        record.TorrentHash +
-                        " is still registered in use.");
+                    /*
+                     * This per-torrent lock serializes grace timers.
+                     * Each stopped session has already removed its own
+                     * pending-cleanup entry before reaching this point.
+                     */
+                    var siblingCleanupExists =
+                        _pendingCleanup.Any(
+                            entry =>
+                                string.Equals(
+                                    entry.Value.Record.TorrentHash,
+                                    record.TorrentHash,
+                                    StringComparison.OrdinalIgnoreCase));
 
-                    return;
+                    if (
+                        siblingCleanupExists ||
+                        PlaybackStateStore.IsTorrentInUse(
+                            record.TorrentHash))
+                    {
+                        _logger.LogWarning(
+                            "SimpleMovieFeed lifecycle: final cleanup deferred for session {PlaySessionId}; startup {StartupId}; torrent {TorrentHash}; siblingCleanupExists={SiblingCleanupExists}; stateStoreInUse={StateStoreInUse}.",
+                            playSessionId,
+                            record.StartupId,
+                            record.TorrentHash,
+                            siblingCleanupExists,
+                            PlaybackStateStore.IsTorrentInUse(
+                                record.TorrentHash));
+
+                        return;
+                    }
+
+                    try
+                    {
+                        await _qbit.DeleteTorrentAsync(
+                            record.TorrentHash,
+                            deleteFiles: false);
+                    }
+                    catch (Exception ex)
+                    {
+                        /*
+                         * The completion monitor may already have removed
+                         * the qBittorrent registration. Cache deletion must
+                         * remain independent of that operation.
+                         */
+                        Console.WriteLine(
+                            "SimpleMovieFeed: final qBittorrent registration removal failed or was already absent for " +
+                            record.TorrentHash +
+                            "; continuing with retained-cache cleanup: " +
+                            ex.Message);
+                    }
+
+                    Exception? cacheDeleteFailure = null;
+
+                    for (
+                        var attempt = 1;
+                        attempt <= 12;
+                        attempt++)
+                    {
+                        /*
+                         * A transcoder or HTTP response can briefly retain a
+                         * Windows file handle after Jellyfin reports playback
+                         * stopped. Re-check shared usage before every retry so
+                         * a newly-started consumer is never cleaned up.
+                         */
+                        var retrySiblingCleanupExists =
+                            _pendingCleanup.Any(
+                                entry =>
+                                    string.Equals(
+                                        entry.Value.Record.TorrentHash,
+                                        record.TorrentHash,
+                                        StringComparison.OrdinalIgnoreCase));
+
+                        if (
+                            retrySiblingCleanupExists ||
+                            PlaybackStateStore.IsTorrentInUse(
+                                record.TorrentHash))
+                        {
+                            _logger.LogWarning(
+                                "SimpleMovieFeed lifecycle: retained-cache cleanup deferred during retry for session {PlaySessionId}; startup {StartupId}; torrent {TorrentHash}; siblingCleanupExists={SiblingCleanupExists}; stateStoreInUse={StateStoreInUse}.",
+                                playSessionId,
+                                record.StartupId,
+                                record.TorrentHash,
+                                retrySiblingCleanupExists,
+                                PlaybackStateStore.IsTorrentInUse(
+                                    record.TorrentHash));
+
+                            return;
+                        }
+
+                        try
+                        {
+                            _qbit.DeleteCachedTorrentContent(
+                                record.CachePath);
+
+                            cacheDeleteFailure = null;
+                            break;
+                        }
+                        catch (IOException ex)
+                        {
+                            cacheDeleteFailure = ex;
+                        }
+                        catch (UnauthorizedAccessException ex)
+                        {
+                            cacheDeleteFailure = ex;
+                        }
+
+                        if (attempt < 12)
+                        {
+                            _logger.LogWarning(
+                                cacheDeleteFailure,
+                                "SimpleMovieFeed lifecycle: retained-cache deletion attempt {Attempt} failed for session {PlaySessionId}; startup {StartupId}; torrent {TorrentHash}. Retrying after transient file-handle delay.",
+                                attempt,
+                                playSessionId,
+                                record.StartupId,
+                                record.TorrentHash);
+
+                            await Task.Delay(
+                                TimeSpan.FromSeconds(5));
+                        }
+                    }
+
+                    if (cacheDeleteFailure is not null)
+                    {
+                        throw new IOException(
+                            "Retained torrent cache could not be deleted after bounded retries.",
+                            cacheDeleteFailure);
+                    }
+
+                    _logger.LogInformation(
+                        "SimpleMovieFeed lifecycle: final playback consumer ended for session {PlaySessionId}; startup {StartupId}; torrent {TorrentHash}; cache {CachePath} deleted successfully.",
+                        playSessionId,
+                        record.StartupId,
+                        record.TorrentHash,
+                        record.CachePath);
                 }
-
-                await _qbit.DeleteTorrentAsync(
-                    record.TorrentHash,
-                    deleteFiles: true);
-
-                Console.WriteLine(
-                    "SimpleMovieFeed: torrent and cache deleted after final playback session; persistent Jellyfin placeholder retained.");
+                finally
+                {
+                    cleanupLock.Release();
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine(
-                    "SimpleMovieFeed: qBittorrent cleanup failed: " +
-                    ex);
+                _logger.LogError(
+                    ex,
+                    "SimpleMovieFeed lifecycle: final playback cleanup failed for session {PlaySessionId}; startup {StartupId}; torrent {TorrentHash}; cache {CachePath}.",
+                    playSessionId,
+                    record.StartupId,
+                    record.TorrentHash,
+                    record.CachePath);
             }
             finally
             {

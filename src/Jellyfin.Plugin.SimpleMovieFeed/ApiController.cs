@@ -240,6 +240,16 @@ public sealed class ApiController : ControllerBase
                     });
             }
 
+            if (request.StartupId == Guid.Empty)
+            {
+                return BadRequest(
+                    new
+                    {
+                        error =
+                            "Startup ID was not supplied."
+                    });
+            }
+
             var metadataGid =
                 await _aria2Service.AddMagnetAsync(
                     request.MagnetLink,
@@ -400,6 +410,7 @@ public sealed class ApiController : ControllerBase
                 persistentStreamUrl);
 
             PlaybackStateStore.RegisterPending(
+                request.StartupId,
                 jellyfinUserId,
                 request.MovieId,
                 request.MovieTitle,
@@ -648,18 +659,20 @@ public sealed class ApiController : ControllerBase
         string hash,
         [FromQuery] Guid userId,
         [FromQuery] int movieId,
+        [FromQuery] Guid startupId,
         CancellationToken ct = default)
     {
         if (
             string.IsNullOrWhiteSpace(hash) ||
             userId == Guid.Empty ||
-            movieId <= 0)
+            movieId <= 0 ||
+            startupId == Guid.Empty)
         {
             return BadRequest(
                 new
                 {
                     error =
-                        "Torrent hash, user ID, and movie ID are required."
+                        "Torrent hash, user ID, movie ID, and startup ID are required."
                 });
         }
 
@@ -667,12 +680,14 @@ public sealed class ApiController : ControllerBase
         {
             var pendingRemoved =
                 PlaybackStateStore.RemovePendingStartup(
+                    startupId,
                     userId,
                     movieId,
                     hash);
 
             var preparedRemoved =
                 PlaybackStateStore.RemovePreparedStartup(
+                    startupId,
                     userId,
                     movieId,
                     hash);
@@ -1351,6 +1366,8 @@ public sealed class QBitTorrentCredentialRequest
 public class StreamRequest
 {
     public Guid UserId { get; set; }
+
+    public Guid StartupId { get; set; }
 
     public int MovieId { get; set; }
 

@@ -1,0 +1,249 @@
+name: Release Candidate
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout exact candidate commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Resolve candidate version
+        id: candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $sha = (git rev-parse HEAD).Trim()
+          $shortSha = $sha.Substring(0, 12)
+
+          $stableTag = @(
+              git tag --list 'v*' --sort=-version:refname |
+                  Where-Object { $_ -match '^v\d+\.\d+\.\d+$' }
+          ) | Select-Object -First 1
+
+          if (-not $stableTag) {
+              throw 'Unable to resolve latest stable release tag.'
+          }
+
+          $match = [regex]::Match(
+              $stableTag,
+              '^v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$')
+
+          if (-not $match.Success) {
+              throw "Invalid stable release tag: $stableTag"
+          }
+
+          $major = [int]$match.Groups['major'].Value
+          $minor = [int]$match.Groups['minor'].Value
+          $patch = [int]$match.Groups['patch'].Value + 1
+
+          $baseVersion = "$major.$minor.$patch"
+          $candidateVersion = "$baseVersion-rc.${{ github.run_number }}"
+          $assemblyVersion = "$baseVersion.0"
+          $informationalVersion = "$candidateVersion+$shortSha"
+
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "short_sha=$shortSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "base_version=$baseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$candidateVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "assembly_version=$assemblyVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "informational_version=$informationalVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          Write-Host "Candidate commit: $sha"
+          Write-Host "Latest stable: $stableTag"
+          Write-Host "Candidate version: $candidateVersion"
+          Write-Host "Assembly/File version: $assemblyVersion"
+          Write-Host "Informational version: $informationalVersion"
+
+      - name: Validate JavaScript
+        run: node --check src/Jellyfin.Plugin.SimpleMovieFeed/SimpleMovieFeed.js
+
+      - name: Restore
+        run: dotnet restore src/Jellyfin.Plugin.SimpleMovieFeed/Jellyfin.Plugin.SimpleMovieFeed.csproj
+
+      - name: Build candidate
+        shell: pwsh
+        run: |
+          dotnet build src/Jellyfin.Plugin.SimpleMovieFeed/Jellyfin.Plugin.SimpleMovieFeed.csproj `
+            --configuration Release `
+            --no-restore `
+            --property:Version=${{ steps.candidate.outputs.version }} `
+            --property:AssemblyVersion=${{ steps.candidate.outputs.assembly_version }} `
+            --property:FileVersion=${{ steps.candidate.outputs.assembly_version }} `
+            --property:InformationalVersion=${{ steps.candidate.outputs.informational_version }}
+
+      - name: Validate candidate metadata
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ steps.candidate.outputs.version }}
+          CANDIDATE_ASSEMBLY_VERSION: ${{ steps.candidate.outputs.assembly_version }}
+          CANDIDATE_SHORT_SHA: ${{ steps.candidate.outputs.short_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $dll = 'src/Jellyfin.Plugin.SimpleMovieFeed/bin/Release/net9.0/Jellyfin.Plugin.SimpleMovieFeed.dll'
+
+          if (-not (Test-Path $dll -PathType Leaf)) {
+              throw 'Candidate DLL was not created.'
+          }
+
+          $resolvedDll = (Resolve-Path $dll)
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($resolvedDll)
+          $assemblyVersion = [System.Reflection.AssemblyName]::GetAssemblyName($resolvedDll).Version.ToString()
+
+          if ($assemblyVersion -ne $env:CANDIDATE_ASSEMBLY_VERSION) {
+              throw "AssemblyVersion mismatch: expected $env:CANDIDATE_ASSEMBLY_VERSION, got $assemblyVersion"
+          }
+
+          if ($info.FileVersion -ne $env:CANDIDATE_ASSEMBLY_VERSION) {
+              throw "FileVersion mismatch: expected $env:CANDIDATE_ASSEMBLY_VERSION, got $($info.FileVersion)"
+          }
+
+          if ($info.ProductVersion -notlike "$env:CANDIDATE_VERSION*$env:CANDIDATE_SHORT_SHA*") {
+              throw "ProductVersion does not identify candidate version and commit: $($info.ProductVersion)"
+          }
+
+          if ($info.ProductVersion -match '^\d+\.\d+\.\d+$') {
+              throw "Candidate ProductVersion incorrectly looks stable: $($info.ProductVersion)"
+          }
+
+          Write-Host "AssemblyVersion: $assemblyVersion"
+          Write-Host "FileVersion: $($info.FileVersion)"
+          Write-Host "ProductVersion: $($info.ProductVersion)"
+
+      - name: Package and validate candidate
+        id: package
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ steps.candidate.outputs.version }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          CANDIDATE_SHORT_SHA: ${{ steps.candidate.outputs.short_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $source = 'src/Jellyfin.Plugin.SimpleMovieFeed/bin/Release/net9.0'
+          $artifacts = 'artifacts'
+          $stage = Join-Path $artifacts 'SimpleMovieFeed'
+          $zipName = "SimpleMovieFeed-$env:CANDIDATE_VERSION-$env:CANDIDATE_SHORT_SHA.zip"
+          $zip = Join-Path $artifacts $zipName
+          $checksum = "$zip.sha256"
+          $metadata = Join-Path $artifacts 'RELEASE-CANDIDATE.txt'
+
+          Remove-Item $artifacts -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+
+          $required = @(
+              'Jellyfin.Plugin.SimpleMovieFeed.dll'
+          )
+
+          $optional = @(
+              'System.Security.Cryptography.ProtectedData.dll'
+          )
+
+          foreach ($file in $required) {
+              $path = Join-Path $source $file
+              if (-not (Test-Path $path -PathType Leaf)) {
+                  throw "Required candidate file missing: $file"
+              }
+              Copy-Item $path $stage
+          }
+
+          foreach ($file in $optional) {
+              $path = Join-Path $source $file
+              if (Test-Path $path -PathType Leaf) {
+                  Copy-Item $path $stage
+                  Write-Host "Including optional runtime dependency: $file"
+              }
+          }
+
+          Copy-Item 'LICENSE' $stage
+          Copy-Item 'README.md' $stage
+
+          @(
+              'SimpleMovieFeed RELEASE CANDIDATE'
+              ''
+              "Candidate version: $env:CANDIDATE_VERSION"
+              "Exact commit: $env:CANDIDATE_SHA"
+              "Pull request: ${{ github.event.pull_request.number }}"
+              "Workflow run: ${{ github.run_id }}"
+              ''
+              'This package is for deployed acceptance testing only.'
+              'It is not a stable GitHub Release and must not be described as fixed until manual acceptance passes.'
+          ) | Set-Content -Path $metadata -Encoding utf8
+
+          Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
+
+          if (-not (Test-Path $zip -PathType Leaf)) {
+              throw 'Candidate ZIP was not created.'
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+          try {
+              $entries = @($archive.Entries | ForEach-Object { $_.FullName })
+          }
+          finally {
+              $archive.Dispose()
+          }
+
+          foreach ($file in $required) {
+              if ($entries -notcontains $file) {
+                  throw "Candidate ZIP validation failed: $file is missing."
+              }
+          }
+
+          if ($entries -match '\.(pdb|deps\.json)$') {
+              throw 'Candidate ZIP contains unwanted development/runtime metadata.'
+          }
+
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path $checksum -Value "$hash  $zipName" -Encoding ASCII
+
+          "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          Write-Host 'Candidate package contents:'
+          $entries | Sort-Object | ForEach-Object { Write-Host "  $_" }
+          Write-Host "SHA256: $hash"
+
+      - name: Upload release candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleMovieFeed-RC-${{ steps.candidate.outputs.version }}-${{ steps.candidate.outputs.short_sha }}
+          path: |
+            artifacts/${{ steps.package.outputs.zip_name }}
+            artifacts/${{ steps.package.outputs.zip_name }}.sha256
+            artifacts/RELEASE-CANDIDATE.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Candidate summary
+        shell: pwsh
+        run: |
+          @(
+              '## SimpleMovieFeed release candidate'
+              ''
+              '- Version: ${{ steps.candidate.outputs.version }}'
+              '- Exact commit: ${{ steps.candidate.outputs.sha }}'
+              '- ZIP: ${{ steps.package.outputs.zip_name }}'
+              '- SHA256: ${{ steps.package.outputs.sha256 }}'
+              '- Purpose: deployed acceptance testing before stable release'
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
