@@ -262,7 +262,7 @@ public sealed class ApiController : ControllerBase
 
             string? videoPath = null;
 
-            for (var attempt = 0; attempt < 60; attempt++)
+            for (var attempt = 0; attempt < 1; attempt++)
             {
                 ct.ThrowIfCancellationRequested();
 
