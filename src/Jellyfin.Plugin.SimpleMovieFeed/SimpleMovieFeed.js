@@ -2721,7 +2721,8 @@ function getApiClient() {
                                     ) <= 0
                                 ) {
                                     details.textContent =
-                                        "Waiting for peers — no peers or seeders are currently available. " +
+                                        "Waiting for peers — no peers or seeders are currently available." +
+                                        "\n" +
                                         details.textContent;
                                 }
 
