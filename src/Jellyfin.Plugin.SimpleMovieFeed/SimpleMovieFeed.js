@@ -1767,6 +1767,53 @@ function getApiClient() {
         details.textContent =
             "Waiting for qBittorrent…";
 
+        const activityLine =
+            document.createElement("div");
+
+        activityLine.style.opacity = ".72";
+        activityLine.style.fontSize = ".85em";
+        activityLine.style.marginTop = "10px";
+
+        const startupDisplayStartedAt =
+            Date.now();
+
+        function formatElapsed(milliseconds) {
+            const totalSeconds =
+                Math.max(
+                    0,
+                    Math.floor(
+                        Number(milliseconds || 0) /
+                        1000
+                    )
+                );
+
+            const minutes =
+                Math.floor(
+                    totalSeconds / 60
+                );
+
+            const seconds =
+                totalSeconds % 60;
+
+            return (
+                String(minutes).padStart(2, "0") +
+                ":" +
+                String(seconds).padStart(2, "0")
+            );
+        }
+
+        function updateActivityLine() {
+            activityLine.textContent =
+                "Active for " +
+                formatElapsed(
+                    Date.now() -
+                    startupDisplayStartedAt
+                ) +
+                " — checking qBittorrent every second";
+        }
+
+        updateActivityLine();
+
         const cancelButton =
             document.createElement("button");
 
@@ -1792,6 +1839,7 @@ function getApiClient() {
         box.appendChild(statusLine);
         box.appendChild(progressOuter);
         box.appendChild(details);
+        box.appendChild(activityLine);
         box.appendChild(cancelButton);
 
         overlay.appendChild(box);
@@ -2501,6 +2549,8 @@ function getApiClient() {
             while (!playbackStarted) {
                 throwIfStartupCancelled();
 
+                updateActivityLine();
+
                 if (startError) {
                     throw startError;
                 }
@@ -2657,6 +2707,23 @@ function getApiClient() {
                                     formatEta(
                                         status.eta
                                     );
+
+                                if (
+                                    percent <= 0 &&
+                                    Number(
+                                        status.peers || 0
+                                    ) <= 0 &&
+                                    Number(
+                                        status.seeds || 0
+                                    ) <= 0 &&
+                                    Number(
+                                        status.downloadSpeed || 0
+                                    ) <= 0
+                                ) {
+                                    details.textContent =
+                                        "Waiting for peers — no peers or seeders are currently available. " +
+                                        details.textContent;
+                                }
 
                                 downloadedBytes =
                                     Number(
