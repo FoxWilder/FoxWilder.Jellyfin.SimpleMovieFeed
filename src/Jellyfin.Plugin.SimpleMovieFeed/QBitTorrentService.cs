@@ -330,6 +330,19 @@ public sealed class QBitTorrentService
                 "Could not determine torrent hash from magnet link.");
         }
 
+        if (PlaybackStateStore.TryGetRetainedCompletedCache(
+                hash,
+                out var retainedCache) &&
+            retainedCache is not null)
+        {
+            Console.WriteLine(
+                "SimpleMovieFeed: using verified retained completed cache for torrent " +
+                hash +
+                "; qBittorrent registration is not required.");
+
+            return hash;
+        }
+
         // Reuse an existing torrent instead of attempting
         // to add the same torrent again.
         var existing =
@@ -528,6 +541,30 @@ public sealed class QBitTorrentService
         string hash,
         CancellationToken cancellationToken)
     {
+        if (PlaybackStateStore.TryGetRetainedCompletedCache(
+                hash,
+                out var retainedCache) &&
+            retainedCache is not null)
+        {
+            var synthetic =
+                JsonSerializer.SerializeToElement(
+                    new
+                    {
+                        hash,
+                        progress = 1.0,
+                        downloaded = retainedCache.FileSize,
+                        total_size = retainedCache.FileSize,
+                        state = "completed",
+                        dlspeed = 0L,
+                        eta = 0L,
+                        num_leechs = 0,
+                        num_seeds = 0
+                    });
+
+            return Task.FromResult<JsonElement?>(
+                synthetic);
+        }
+
         return GetTorrentAsync(
             hash,
             cancellationToken);
@@ -536,6 +573,13 @@ public sealed class QBitTorrentService
         string hash,
         CancellationToken cancellationToken)
     {
+        if (PlaybackStateStore.TryGetRetainedCompletedCache(
+                hash,
+                out _))
+        {
+            return hash;
+        }
+
         for (var i = 0; i < 60; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -563,6 +607,27 @@ public sealed class QBitTorrentService
         string hash,
         CancellationToken cancellationToken)
     {
+        if (PlaybackStateStore.TryGetRetainedCompletedCache(
+                hash,
+                out var retainedCache) &&
+            retainedCache is not null)
+        {
+            var relativePath =
+                Path.GetRelativePath(
+                    _downloadDirectory,
+                    retainedCache.CachePath);
+
+            return JsonSerializer.SerializeToElement(
+                new[]
+                {
+                    new
+                    {
+                        name = relativePath,
+                        size = retainedCache.FileSize
+                    }
+                });
+        }
+
         EnsureAuthenticated();
 
         using var response =
@@ -947,6 +1012,9 @@ public sealed class QBitTorrentService
                 continue;
             }
 
+            PlaybackStateStore.MarkRetainedCompletedCache(
+                hash);
+
             await DeleteTorrentAsync(
                 hash,
                 deleteFiles: false,
@@ -1099,6 +1167,9 @@ public sealed class QBitTorrentService
                 File.Delete(safePath);
             }
 
+            PlaybackStateStore.ClearRetainedCompletedCacheForPath(
+                safePath);
+
             return;
         }
 
@@ -1126,6 +1197,9 @@ public sealed class QBitTorrentService
                 safeTopLevelPath,
                 recursive: true);
 
+            PlaybackStateStore.ClearRetainedCompletedCacheForPath(
+                safePath);
+
             return;
         }
 
@@ -1133,6 +1207,9 @@ public sealed class QBitTorrentService
         {
             File.Delete(safePath);
         }
+
+        PlaybackStateStore.ClearRetainedCompletedCacheForPath(
+            safePath);
     }
     private static string? ExtractBtih(string magnet)
     {

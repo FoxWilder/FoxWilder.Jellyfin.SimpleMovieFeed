@@ -22,6 +22,13 @@ public sealed record StoredMovie(
     string MagnetLink,
     string Quality);
 
+public sealed record RetainedCompletedCache(
+    int MovieId,
+    string MagnetLink,
+    string TorrentHash,
+    string CachePath,
+    long FileSize);
+
 public static class PlaybackStateStore
 {
     private static readonly object ResumeLock = new();
@@ -42,6 +49,12 @@ public static class PlaybackStateStore
         string,
         ConcurrentDictionary<Guid, ActiveMoviePlayback>>
         PendingByLibraryPath =
+            new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly ConcurrentDictionary<
+        string,
+        RetainedCompletedCache>
+        RetainedCompletedByTorrentHash =
             new(StringComparer.OrdinalIgnoreCase);
 
     private static Dictionary<string, long> _resume =
@@ -374,6 +387,222 @@ public static class PlaybackStateStore
         return false;
     }
 
+    private static ActiveMoviePlayback? FindPlaybackByTorrentHash(
+        string torrentHash)
+    {
+        foreach (var record in ActiveByPlaySessionId.Values)
+        {
+            if (string.Equals(
+                    record.TorrentHash,
+                    torrentHash,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return record;
+            }
+        }
+
+        foreach (var prepared in PreparedByItemId.Values)
+        {
+            foreach (var record in prepared.Values)
+            {
+                if (string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return record;
+                }
+            }
+        }
+
+        foreach (var pending in PendingByLibraryPath.Values)
+        {
+            foreach (var record in pending.Values)
+            {
+                if (string.Equals(
+                        record.TorrentHash,
+                        torrentHash,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return record;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public static bool MarkRetainedCompletedCache(
+        string torrentHash)
+    {
+        if (string.IsNullOrWhiteSpace(torrentHash))
+        {
+            return false;
+        }
+
+        var playback =
+            FindPlaybackByTorrentHash(
+                torrentHash);
+
+        if (playback is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var fullPath =
+                Path.GetFullPath(
+                    playback.CachePath);
+
+            if (!File.Exists(fullPath))
+            {
+                return false;
+            }
+
+            var fileSize =
+                new FileInfo(fullPath).Length;
+
+            if (fileSize <= 0)
+            {
+                return false;
+            }
+
+            RetainedCompletedByTorrentHash[
+                torrentHash] =
+                new RetainedCompletedCache(
+                    playback.MovieId,
+                    playback.MagnetLink,
+                    torrentHash,
+                    fullPath,
+                    fileSize);
+
+            Console.WriteLine(
+                "SimpleMovieFeed: verified completed cache retained for torrent " +
+                torrentHash +
+                ".");
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool TryGetRetainedCompletedCache(
+        string torrentHash,
+        out RetainedCompletedCache? cache)
+    {
+        cache = null;
+
+        if (string.IsNullOrWhiteSpace(torrentHash))
+        {
+            return false;
+        }
+
+        if (!RetainedCompletedByTorrentHash.TryGetValue(
+                torrentHash,
+                out var retained))
+        {
+            return false;
+        }
+
+        try
+        {
+            var fullPath =
+                Path.GetFullPath(
+                    retained.CachePath);
+
+            if (!File.Exists(fullPath))
+            {
+                RetainedCompletedByTorrentHash.TryRemove(
+                    torrentHash,
+                    out _);
+
+                return false;
+            }
+
+            var currentSize =
+                new FileInfo(fullPath).Length;
+
+            if (
+                currentSize <= 0 ||
+                currentSize != retained.FileSize)
+            {
+                RetainedCompletedByTorrentHash.TryRemove(
+                    torrentHash,
+                    out _);
+
+                return false;
+            }
+
+            cache =
+                retained with
+                {
+                    CachePath = fullPath
+                };
+
+            return true;
+        }
+        catch
+        {
+            RetainedCompletedByTorrentHash.TryRemove(
+                torrentHash,
+                out _);
+
+            return false;
+        }
+    }
+
+    public static void ClearRetainedCompletedCacheForPath(
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        string fullPath;
+
+        try
+        {
+            fullPath =
+                Path.GetFullPath(path);
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var entry in RetainedCompletedByTorrentHash)
+        {
+            string retainedPath;
+
+            try
+            {
+                retainedPath =
+                    Path.GetFullPath(
+                        entry.Value.CachePath);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!string.Equals(
+                    retainedPath,
+                    fullPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            RetainedCompletedByTorrentHash.TryRemove(
+                entry.Key,
+                out _);
+        }
+    }
     public static void AttachItem(
         Guid jellyfinItemId,
         string libraryPath)
